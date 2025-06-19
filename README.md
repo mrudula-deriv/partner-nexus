@@ -76,8 +76,6 @@ The frontend will be available at: `http://localhost:3000`
 - **Single Line Chart**: For time series data
 - **Multi-Line Chart**: For comparing multiple entities over time
 - **Pie Chart**: For distribution analysis
-- **Histogram**: For data distribution
-- **Correlation Heatmap**: For correlation analysis
 
 ## Environment Setup
 
@@ -119,7 +117,6 @@ Application logs are stored in `backend/logs/`:
 - "Top 5 partners by client deposits in March 2025"
 - "Compare partner performance across regions with bar graph"
 - "Show partner commission trends over time"
-- "Middle East partner deposit analysis with visualization"
 
 ### Comparison Queries
 When asking for comparisons, the system automatically generates multi-series visualizations:
