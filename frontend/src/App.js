@@ -121,6 +121,9 @@ function App() {
     cohort_type: 'forward'  // Add cohort type: 'forward' or 'reverse'
   });
 
+  // Add this state variable near the other state declarations
+  const [filterColumnOrder, setFilterColumnOrder] = useState([]);
+
   // All existing functions remain the same
   const handleSqlTest = async () => {
     if (!query.trim()) {
@@ -359,38 +362,75 @@ function App() {
   };
 
   const sortData = (data) => {
-    if (!sortConfig.key || !data || data.length === 0) {
+    if (!data || data.length === 0) {
       return data;
     }
 
-    return [...data].sort((a, b) => {
-      const aValue = a[sortConfig.key];
-      const bValue = b[sortConfig.key];
+    // Create a copy of the data
+    let sortedData = [...data];
 
-      if (aValue === null || aValue === undefined || aValue === '-') return 1;
-      if (bValue === null || bValue === undefined || bValue === '-') return -1;
+    // If we have a specific sort configuration, use that
+    if (sortConfig.key) {
+      return sortedData.sort((a, b) => {
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
 
-      const parseNumericValue = (value) => {
-        if (typeof value === 'number') return value;
-        if (typeof value === 'string') {
-          const cleaned = value.replace(/,/g, '').replace(/%/g, '').replace(/\+/g, '');
-          const parsed = parseFloat(cleaned);
-          return isNaN(parsed) ? value : parsed;
+        if (aValue === null || aValue === undefined || aValue === '-') return 1;
+        if (bValue === null || bValue === undefined || bValue === '-') return -1;
+
+        const parseNumericValue = (value) => {
+          if (typeof value === 'number') return value;
+          if (typeof value === 'string') {
+            const cleaned = value.replace(/,/g, '').replace(/%/g, '').replace(/\+/g, '');
+            const parsed = parseFloat(cleaned);
+            return isNaN(parsed) ? value : parsed;
+          }
+          return value;
+        };
+
+        const aParsed = parseNumericValue(aValue);
+        const bParsed = parseNumericValue(bValue);
+
+        let comparison = 0;
+        if (typeof aParsed === 'number' && typeof bParsed === 'number') {
+          comparison = aParsed - bParsed;
+        } else {
+          comparison = String(aParsed).localeCompare(String(bParsed));
         }
-        return value;
-      };
 
-      const aParsed = parseNumericValue(aValue);
-      const bParsed = parseNumericValue(bValue);
+        return sortConfig.direction === 'asc' ? comparison : -comparison;
+      });
+    }
 
-      let comparison = 0;
-      if (typeof aParsed === 'number' && typeof bParsed === 'number') {
-        comparison = aParsed - bParsed;
-      } else {
-        comparison = String(aParsed).localeCompare(String(bParsed));
+    // Otherwise, use hierarchical sorting based on filter columns
+    const colMap = {
+      'partner_regions': 'Partner Region',
+      'partner_countries': 'Partner Country',
+      'partner_platforms': 'Platform',
+      'aff_types': 'Plan Type',
+      'partner_levels': 'Partner Level',
+      'event_statuses': 'Event Status',
+      'acquisition_types': 'Acquisition Type',
+      'plan_types': 'Plan Types'
+    };
+
+    // Get the active filter columns in their display order
+    const sortColumns = filterColumnOrder
+      .filter(filterType => activeFilters[filterType]?.showAsColumn)
+      .map(filterType => colMap[filterType]);
+
+    return sortedData.sort((a, b) => {
+      // Compare each column in order until we find a difference
+      for (const column of sortColumns) {
+        const aValue = (a[column] || '').toString();
+        const bValue = (b[column] || '').toString();
+        
+        const comparison = aValue.localeCompare(bValue);
+        if (comparison !== 0) {
+          return comparison;
+        }
       }
-
-      return sortConfig.direction === 'asc' ? comparison : -comparison;
+      return 0;
     });
   };
 
@@ -909,41 +949,80 @@ function App() {
                       }}>
                         {Object.entries(availableFilters).map(([filterType, options]) => (
                           <div key={filterType} className="form-group">
-                            <label className="form-label">
-                              {filterType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                            </label>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                              <label className="form-label" style={{ margin: 0, flex: 1 }}>
+                                {filterType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                              </label>
+                              <input
+                                type="checkbox"
+                                checked={activeFilters[filterType]?.showAsColumn || false}
+                                onChange={(e) => {
+                                  const newFilters = { ...activeFilters };
+                                  if (!newFilters[filterType]) {
+                                    newFilters[filterType] = { values: [], showAsColumn: e.target.checked };
+                                  } else {
+                                    newFilters[filterType] = { ...newFilters[filterType], showAsColumn: e.target.checked };
+                                  }
+                                  setActiveFilters(newFilters);
+                                  
+                                  // Update filter column order
+                                  if (e.target.checked) {
+                                    // Add to end of filter columns
+                                    setFilterColumnOrder(prev => [...prev.filter(f => f !== filterType), filterType]);
+                                  } else {
+                                    // Remove from filter columns completely
+                                    setFilterColumnOrder(prev => prev.filter(f => f !== filterType));
+                                  }
+                                }}
+                                style={{
+                                  width: '16px',
+                                  height: '16px',
+                                  accentColor: 'var(--primary-red)',
+                                  border: '1px solid var(--border-color)',
+                                  borderRadius: '3px'
+                                }}
+                              />
+                            </div>
                             <select
                               value=""
                               onChange={(e) => {
                                 if (e.target.value) {
-                                  const currentValues = activeFilters[filterType] || [];
+                                  const currentValues = activeFilters[filterType]?.values || [];
                                   if (!currentValues.includes(e.target.value)) {
-                                    handleFilterChange(filterType, [...currentValues, e.target.value]);
+                                    const newFilters = { ...activeFilters };
+                                    if (!newFilters[filterType]) {
+                                      newFilters[filterType] = { values: [e.target.value], showAsColumn: false };
+                                    } else {
+                                      newFilters[filterType] = { 
+                                        ...newFilters[filterType], 
+                                        values: [...currentValues, e.target.value]
+                                      };
+                                    }
+                                    setActiveFilters(newFilters);
                                   }
                                 }
                               }}
                               className="form-select"
                               style={{
                                 backgroundColor: 'var(--bg-primary)',
-                                color: 'var(--text-primary)'
+                                color: 'var(--text-primary)',
+                                opacity: activeFilters[filterType]?.showAsColumn ? 1 : 0.5,
+                                cursor: activeFilters[filterType]?.showAsColumn ? 'pointer' : 'not-allowed'
                               }}
+                              disabled={!activeFilters[filterType]?.showAsColumn}
                             >
                               <option value="">Select {filterType.replace('_', ' ')}...</option>
                               {(options || []).map(option => (
                                 <option 
                                   key={option} 
                                   value={option}
-                                  disabled={activeFilters[filterType]?.includes(option)}
-                                  style={{
-                                    backgroundColor: 'var(--bg-primary)',
-                                    color: activeFilters[filterType]?.includes(option) ? 'var(--text-secondary)' : 'var(--text-primary)'
-                                  }}
+                                  disabled={activeFilters[filterType]?.values?.includes(option)}
                                 >
                                   {option}
                                 </option>
                               ))}
                             </select>
-                            {activeFilters[filterType] && activeFilters[filterType].length > 0 && (
+                            {activeFilters[filterType]?.values && activeFilters[filterType].values.length > 0 && (
                               <div style={{ 
                                 display: 'flex', 
                                 flexWrap: 'wrap', 
@@ -951,7 +1030,7 @@ function App() {
                                 marginTop: '0.5rem',
                                 minHeight: '28px'
                               }}>
-                                {activeFilters[filterType].map(value => (
+                                {activeFilters[filterType].values.map(value => (
                                   <span 
                                     key={value} 
                                     className="badge badge-red"
@@ -966,12 +1045,15 @@ function App() {
                                     {value}
                                     <button
                                       onClick={() => {
-                                        const newValues = activeFilters[filterType].filter(v => v !== value);
-                                        if (newValues.length === 0) {
-                                          removeFilter(filterType);
-                                        } else {
-                                          handleFilterChange(filterType, newValues);
+                                        const newFilters = { ...activeFilters };
+                                        newFilters[filterType] = {
+                                          ...newFilters[filterType],
+                                          values: newFilters[filterType].values.filter(v => v !== value)
+                                        };
+                                        if (newFilters[filterType].values.length === 0 && !newFilters[filterType].showAsColumn) {
+                                          delete newFilters[filterType];
                                         }
+                                        setActiveFilters(newFilters);
                                       }}
                                       style={{
                                         background: 'none',
@@ -1081,11 +1163,39 @@ function App() {
                     <table className="grid-table">
                       <thead>
                         <tr>
-                          {screenerData.columns.map(column => (
+                          {/* Show filter columns in order they were checked */}
+                          {filterColumnOrder
+                            .filter(filterType => activeFilters[filterType]?.showAsColumn)
+                            .map(filterType => (
+                              <th
+                                key={filterType}
+                                className="sortable"
+                                onClick={() => handleSort(filterType)}
+                                style={{
+                                  position: 'sticky',
+                                  top: 0,
+                                  backgroundColor: 'var(--bg-tertiary)',
+                                  zIndex: 1
+                                }}
+                              >
+                                <div style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem'
+                                }}>
+                                  {filterType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                  {sortConfig.key === filterType && (
+                                    sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                  )}
+                                </div>
+                              </th>
+                            ))}
+                          {/* Then show metric columns */}
+                          {selectedMetrics.map(metric => (
                             <th
-                              key={column}
+                              key={metric}
                               className="sortable"
-                              onClick={() => handleSort(column)}
+                              onClick={() => handleSort(metric)}
                               style={{
                                 position: 'sticky',
                                 top: 0,
@@ -1098,8 +1208,8 @@ function App() {
                                 alignItems: 'center',
                                 gap: '0.25rem'
                               }}>
-                                {column}
-                                {sortConfig.key === column && (
+                                {metric}
+                                {sortConfig.key === metric && (
                                   sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
                                 )}
                               </div>
@@ -1110,13 +1220,32 @@ function App() {
                       <tbody>
                         {sortData(screenerData.data).map((row, idx) => (
                           <tr key={idx}>
-                            {screenerData.columns.map(column => (
-                              <td key={column} style={{
-                                backgroundColor: Object.keys(row).indexOf(column) < Object.keys(activeFilters).length 
-                                  ? 'var(--bg-tertiary)' 
-                                  : 'transparent'
-                              }}>
-                                {row[column] || '-'}
+                            {/* Show filter values in same order as headers */}
+                            {filterColumnOrder
+                              .filter(filterType => activeFilters[filterType]?.showAsColumn)
+                              .map(filterType => {
+                                const colMap = {
+                                  'partner_regions': 'Partner Region',
+                                  'partner_countries': 'Partner Country',
+                                  'partner_platforms': 'Platform',
+                                  'aff_types': 'Plan Type',
+                                  'partner_levels': 'Partner Level',
+                                  'event_statuses': 'Event Status',
+                                  'acquisition_types': 'Acquisition Type',
+                                  'plan_types': 'Plan Types'  // Add plan_types mapping
+                                };
+                                return (
+                                  <td key={filterType} style={{
+                                    backgroundColor: 'var(--bg-tertiary)'
+                                  }}>
+                                    {row[colMap[filterType]] || '-'}
+                                  </td>
+                                );
+                              })}
+                            {/* Then show all metric values */}
+                            {selectedMetrics.map(metric => (
+                              <td key={metric}>
+                                {row[metric] || '-'}
                               </td>
                             ))}
                           </tr>
