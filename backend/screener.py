@@ -386,11 +386,16 @@ def get_filter_options():
 
             # Onboarding Event Status
             cursor.execute("""
-                SELECT DISTINCT attended_onboarding_event 
+                SELECT DISTINCT 
+                    CASE 
+                        WHEN attended_onboarding_event = TRUE THEN 'Attended'
+                        WHEN attended_onboarding_event = FALSE THEN 'Not Attended'
+                        ELSE 'Unknown'
+                    END as event_status
                 FROM partner.partner_info
                 WHERE attended_onboarding_event IS NOT NULL 
                 AND is_internal = FALSE
-                ORDER BY attended_onboarding_event;
+                ORDER BY event_status;
             """)
             event_statuses = [row[0] for row in cursor.fetchall()]
 
@@ -459,10 +464,21 @@ def create_filter_query(filters):
                 # Filter out None and "All" values
                 valid_values = [v for v in values if v is not None and v != "All"]
                 if valid_values:
-                    # Use a single IN clause with the correct number of placeholders
-                    placeholders = ','.join(['%s'] * len(valid_values))
-                    conditions.append(f"{col_map[key]} IN ({placeholders})")
-                    params.extend(valid_values)
+                    if key == 'event_statuses':
+                        # Handle event status string values
+                        status_conditions = []
+                        for value in valid_values:
+                            if value == 'Attended':
+                                status_conditions.append(f"{col_map[key]} = TRUE")
+                            elif value == 'Not Attended':
+                                status_conditions.append(f"{col_map[key]} = FALSE")
+                        if status_conditions:
+                            conditions.append(f"({' OR '.join(status_conditions)})")
+                    else:
+                        # Use a single IN clause with the correct number of placeholders
+                        placeholders = ','.join(['%s'] * len(valid_values))
+                        conditions.append(f"{col_map[key]} IN ({placeholders})")
+                        params.extend(valid_values)
     
     where_clause = " AND ".join(conditions) if conditions else ""
     return where_clause, params

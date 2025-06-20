@@ -190,8 +190,14 @@ function App() {
       setAvailableMetrics(metricsResponse.data.metrics);
       setAvailableFilters(filtersResponse.data.filters);
       
-      const basicMetrics = Object.values(metricsResponse.data.metrics.basic_metrics || {});
-      setSelectedMetrics(basicMetrics.slice(0, 2));
+      // Set default metrics to match the required columns
+      const defaultMetrics = [
+        'Application Count',
+        'First Activated Count - Signup',
+        'First Activated Count - Deposit',
+        'First Activated Count - Traded'
+      ];
+      setSelectedMetrics(defaultMetrics);
       
     } catch (err) {
       setScreenerError(err.response?.data?.error || 'Failed to load screener data');
@@ -237,7 +243,12 @@ function App() {
         filters: filters
       });
 
-      setScreenerData(response.data.data);
+      if (response.data && response.data.data) {
+        setScreenerData({
+          data: response.data.data.data,
+          columns: response.data.data.columns
+        });
+      }
     } catch (err) {
       setScreenerError(err.response?.data?.error || 'Failed to fetch screener data');
     } finally {
@@ -912,16 +923,46 @@ function App() {
                                 }
                               }}
                               className="form-select"
+                              style={{
+                                backgroundColor: 'var(--bg-primary)',
+                                color: 'var(--text-primary)'
+                              }}
                             >
                               <option value="">Select {filterType.replace('_', ' ')}...</option>
                               {(options || []).map(option => (
-                                <option key={option} value={option}>{option}</option>
+                                <option 
+                                  key={option} 
+                                  value={option}
+                                  disabled={activeFilters[filterType]?.includes(option)}
+                                  style={{
+                                    backgroundColor: 'var(--bg-primary)',
+                                    color: activeFilters[filterType]?.includes(option) ? 'var(--text-secondary)' : 'var(--text-primary)'
+                                  }}
+                                >
+                                  {option}
+                                </option>
                               ))}
                             </select>
                             {activeFilters[filterType] && activeFilters[filterType].length > 0 && (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+                              <div style={{ 
+                                display: 'flex', 
+                                flexWrap: 'wrap', 
+                                gap: '0.5rem', 
+                                marginTop: '0.5rem',
+                                minHeight: '28px'
+                              }}>
                                 {activeFilters[filterType].map(value => (
-                                  <span key={value} className="badge badge-red">
+                                  <span 
+                                    key={value} 
+                                    className="badge badge-red"
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      padding: '0.25rem 0.5rem',
+                                      fontSize: '0.75rem'
+                                    }}
+                                  >
                                     {value}
                                     <button
                                       onClick={() => {
@@ -933,13 +974,15 @@ function App() {
                                         }
                                       }}
                                       style={{
-                                        marginLeft: '0.5rem',
                                         background: 'none',
                                         border: 'none',
                                         cursor: 'pointer',
                                         color: 'inherit',
+                                        padding: '0 0 0 0.25rem',
                                         fontSize: '1rem',
-                                        lineHeight: '1'
+                                        lineHeight: '1',
+                                        display: 'flex',
+                                        alignItems: 'center'
                                       }}
                                     >
                                       ×
@@ -1043,6 +1086,12 @@ function App() {
                               key={column}
                               className="sortable"
                               onClick={() => handleSort(column)}
+                              style={{
+                                position: 'sticky',
+                                top: 0,
+                                backgroundColor: 'var(--bg-primary)',
+                                zIndex: 1
+                              }}
                             >
                               <div style={{
                                 display: 'flex',
@@ -1062,7 +1111,11 @@ function App() {
                         {sortData(screenerData.data).map((row, idx) => (
                           <tr key={idx}>
                             {screenerData.columns.map(column => (
-                              <td key={column}>
+                              <td key={column} style={{
+                                backgroundColor: Object.keys(row).indexOf(column) < Object.keys(activeFilters).length 
+                                  ? 'var(--bg-tertiary)' 
+                                  : 'transparent'
+                              }}>
                                 {row[column] || '-'}
                               </td>
                             ))}
