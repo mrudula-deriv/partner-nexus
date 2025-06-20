@@ -432,9 +432,16 @@ def create_filter_query(filters):
     conditions = []
     params = []
     
-    for key, values in filters.items():
+    for filter_name, filter_data in filters.items():
+        # Skip if no filter data
+        if not filter_data:
+            continue
+            
+        # Get the selected values from the filter
+        values = filter_data.get('values', [])
+        
         # Skip if values is empty or only contains "All"
-        if not values or values == ["All"] or not isinstance(values, list):
+        if not values or values == ["All"]:
             continue
             
         col_map = {
@@ -445,27 +452,27 @@ def create_filter_query(filters):
             'partner_levels': 'partner_level',
             'event_statuses': 'attended_onboarding_event',
             'acquisition_types': 'earning_acquisition',
-            'plan_types': 'plan_type'  # Updated to use the new plan_type column
+            'plan_types': 'plan_type'
         }
         
-        if key in col_map and values:
+        if filter_name in col_map:
             # Filter out None and "All" values
             valid_values = [v for v in values if v is not None and v != "All"]
             if valid_values:
-                if key == 'event_statuses':
+                if filter_name == 'event_statuses':
                     # Handle event status string values
                     status_conditions = []
                     for value in valid_values:
                         if value == 'Attended':
-                            status_conditions.append(f"{col_map[key]} = TRUE")
+                            status_conditions.append(f"{col_map[filter_name]} = TRUE")
                         elif value == 'Not Attended':
-                            status_conditions.append(f"{col_map[key]} = FALSE")
+                            status_conditions.append(f"{col_map[filter_name]} = FALSE")
                     if status_conditions:
                         conditions.append(f"({' OR '.join(status_conditions)})")
                 else:
                     # Use a single IN clause with the correct number of placeholders
                     placeholders = ','.join(['%s'] * len(valid_values))
-                    conditions.append(f"{col_map[key]} IN ({placeholders})")
+                    conditions.append(f"{col_map[filter_name]} IN ({placeholders})")
                     params.extend(valid_values)
     
     where_clause = " AND ".join(conditions) if conditions else ""

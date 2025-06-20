@@ -123,6 +123,8 @@ function App() {
 
   // Add this state variable near the other state declarations
   const [filterColumnOrder, setFilterColumnOrder] = useState([]);
+  const [filterOptions, setFilterOptions] = useState({});
+  const [screenerResults, setScreenerResults] = useState(null);
 
   // All existing functions remain the same
   const handleSqlTest = async () => {
@@ -474,6 +476,29 @@ function App() {
       a.click();
       window.URL.revokeObjectURL(url);
     }
+  };
+
+  const handleFilterCheckboxChange = (filterType) => {
+    const newFilters = { ...activeFilters };
+    
+    if (newFilters[filterType]) {
+      // If unchecking, remove all values and the filter entirely
+      delete newFilters[filterType];
+      // Remove from filter column order
+      setFilterColumnOrder(prev => prev.filter(f => f !== filterType));
+    } else {
+      // If checking, initialize with empty values
+      newFilters[filterType] = {
+        values: [],
+        showAsColumn: true
+      };
+      // Add to filter column order if not already present
+      if (!filterColumnOrder.includes(filterType)) {
+        setFilterColumnOrder(prev => [...prev, filterType]);
+      }
+    }
+    
+    setActiveFilters(newFilters);
   };
 
   return (
@@ -955,24 +980,22 @@ function App() {
                               </label>
                               <input
                                 type="checkbox"
-                                checked={activeFilters[filterType]?.showAsColumn || false}
-                                onChange={(e) => {
+                                checked={!!activeFilters[filterType]?.showAsColumn}
+                                onChange={() => {
                                   const newFilters = { ...activeFilters };
-                                  if (!newFilters[filterType]) {
-                                    newFilters[filterType] = { values: [], showAsColumn: e.target.checked };
+                                  if (newFilters[filterType]) {
+                                    delete newFilters[filterType];
+                                    setFilterColumnOrder(prev => prev.filter(f => f !== filterType));
                                   } else {
-                                    newFilters[filterType] = { ...newFilters[filterType], showAsColumn: e.target.checked };
+                                    newFilters[filterType] = {
+                                      values: [],
+                                      showAsColumn: true
+                                    };
+                                    if (!filterColumnOrder.includes(filterType)) {
+                                      setFilterColumnOrder(prev => [...prev, filterType]);
+                                    }
                                   }
                                   setActiveFilters(newFilters);
-                                  
-                                  // Update filter column order
-                                  if (e.target.checked) {
-                                    // Add to end of filter columns
-                                    setFilterColumnOrder(prev => [...prev.filter(f => f !== filterType), filterType]);
-                                  } else {
-                                    // Remove from filter columns completely
-                                    setFilterColumnOrder(prev => prev.filter(f => f !== filterType));
-                                  }
                                 }}
                                 style={{
                                   width: '16px',
@@ -991,12 +1014,24 @@ function App() {
                                   if (!currentValues.includes(e.target.value)) {
                                     const newFilters = { ...activeFilters };
                                     if (!newFilters[filterType]) {
-                                      newFilters[filterType] = { values: [e.target.value], showAsColumn: false };
+                                      newFilters[filterType] = { 
+                                        values: [e.target.value], 
+                                        showAsColumn: true  // Automatically show as column when values are selected
+                                      };
+                                      // Add to filter column order if not already present
+                                      if (!filterColumnOrder.includes(filterType)) {
+                                        setFilterColumnOrder(prev => [...prev, filterType]);
+                                      }
                                     } else {
                                       newFilters[filterType] = { 
                                         ...newFilters[filterType], 
-                                        values: [...currentValues, e.target.value]
+                                        values: [...currentValues, e.target.value],
+                                        showAsColumn: true  // Ensure column is shown when values are selected
                                       };
+                                      // Add to filter column order if not already present
+                                      if (!filterColumnOrder.includes(filterType)) {
+                                        setFilterColumnOrder(prev => [...prev, filterType]);
+                                      }
                                     }
                                     setActiveFilters(newFilters);
                                   }
@@ -1046,12 +1081,17 @@ function App() {
                                     <button
                                       onClick={() => {
                                         const newFilters = { ...activeFilters };
-                                        newFilters[filterType] = {
-                                          ...newFilters[filterType],
-                                          values: newFilters[filterType].values.filter(v => v !== value)
-                                        };
-                                        if (newFilters[filterType].values.length === 0 && !newFilters[filterType].showAsColumn) {
+                                        const newValues = newFilters[filterType].values.filter(v => v !== value);
+                                        if (newValues.length === 0) {
+                                          // If no values left, remove the filter completely
                                           delete newFilters[filterType];
+                                          // Remove from filter column order
+                                          setFilterColumnOrder(prev => prev.filter(f => f !== filterType));
+                                        } else {
+                                          newFilters[filterType] = {
+                                            ...newFilters[filterType],
+                                            values: newValues
+                                          };
                                         }
                                         setActiveFilters(newFilters);
                                       }}
