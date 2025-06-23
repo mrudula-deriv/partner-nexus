@@ -315,7 +315,10 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   background-color: var(--bg-primary);
+  color: var(--text-primary);
   transition: all 0.2s;
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
 }
 
 .form-input:focus,
@@ -329,6 +332,37 @@ body {
 .form-textarea {
   resize: vertical;
   min-height: 120px;
+}
+
+/* Ensure select elements and their options are properly styled */
+select.form-select {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+select.form-select option {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  padding: 0.5rem;
+}
+
+/* Remove previous select styles that might conflict */
+select {
+  appearance: auto;
+  -webkit-appearance: auto;
+}
+
+/* Style the select when it's disabled */
+select.form-select:disabled {
+  background-color: var(--bg-tertiary);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Style the select's placeholder option */
+select.form-select option[value=""] {
+  color: var(--text-secondary);
 }
 
 /* Tables */
@@ -747,4 +781,30 @@ body {
 .grid-table td:has(+ td):last-of-type,
 .grid-table td[data-numeric="true"] {
   text-align: right;
+}
+
+/* Add specific styles for select elements */
+select {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 0.5rem !important;
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+  width: 100% !important;
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+}
+
+select option {
+  background-color: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+  padding: 0.5rem !important;
+}
+
+select:focus {
+  outline: 2px solid var(--primary-red) !important;
+  outline-offset: 2px !important;
+  border-color: var(--primary-red) !important;
 } 

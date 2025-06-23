@@ -78,37 +78,79 @@ def get_available_metrics():
     }
     return metrics
 
-def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_filters=None, group_by=None):
+def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_filters=None):
     """Fetch metrics data based on available columns"""
     metrics = get_available_metrics()
     
-    # Start with group by columns first in the correct order
+    # Start with empty select parts
     select_parts = []
+    group_by_cols = []
     
-    # Define the correct order for group_by columns
-    group_by_order = ['partner_region', 'partner_country', 'aff_type', 'partner_platform', 'attended_onboarding_event', 'partner_level']
+    # Build the base query with plan type assignment
+    base_query = """
+    WITH partner_plans AS (
+        SELECT 
+            partner_id,
+            CASE
+                WHEN is_master_plan THEN 'Master'
+                WHEN is_revshare_plan THEN 'Revenue Share'
+                WHEN is_turnover_plan THEN 'Turnover'
+                WHEN is_cpa_plan THEN 'CPA'
+                WHEN is_ib_plan THEN 'IB'
+                ELSE 'Unknown'
+            END as plan_type,
+            partner_region,
+            partner_country,
+            partner_platform,
+            aff_type,
+            partner_level,
+            attended_onboarding_event,
+            earning_acquisition,
+            first_client_joined_date,
+            first_client_deposit_date,
+            first_client_trade_date,
+            first_earning_date,
+            date_joined
+        FROM partner.partner_info
+        WHERE is_internal = FALSE
+    )
+    """
     
-    # Add group by columns first in proper order (only those that are in the group_by list)
-    if group_by:
-        for col in group_by_order:
-            if col in group_by:
-                # Add proper aliases for display
-                if col == 'partner_region':
-                    select_parts.append(f"COALESCE({col}, 'Unknown') as \"Region\"")
-                elif col == 'partner_country':
-                    select_parts.append(f"COALESCE({col}, 'Unknown') as \"Country\"")
-                elif col == 'aff_type':
-                    select_parts.append(f"COALESCE({col}, 'Unknown') as \"Plan\"")
-                elif col == 'partner_platform':
-                    select_parts.append(f"COALESCE({col}, 'Unknown') as \"Platform\"")
-                elif col == 'attended_onboarding_event':
-                    select_parts.append(f"COALESCE({col}::text, 'Unknown') as \"Attended Event\"")
-                elif col == 'partner_level':
-                    select_parts.append(f"COALESCE({col}, 'Unknown') as \"Partner Level\"")
+    # Add columns from active filters that should be shown and grouped
+    if active_filters:
+        col_map = {
+            'partner_regions': ('partner_region', 'Partner Region'),
+            'partner_countries': ('partner_country', 'Partner Country'),
+            'partner_platforms': ('partner_platform', 'Platform'),
+            'aff_types': ('aff_type', 'Plan Type'),
+            'partner_levels': ('partner_level', 'Partner Level'),
+            'event_statuses': ('attended_onboarding_event', 'Event Status'),
+            'acquisition_types': ('earning_acquisition', 'Acquisition Type'),
+            'plan_types': ('plan_type', 'Plan Types')
+        }
+        
+        for filter_name, filter_data in active_filters.items():
+            if filter_data.get('showAsColumn') and filter_name in col_map:
+                col_name, display_name = col_map[filter_name]
+                if filter_name == 'event_statuses':
+                    # Special handling for boolean event status
+                    select_parts.append(f"""
+                        CASE 
+                            WHEN {col_name} = TRUE THEN 'Attended'
+                            WHEN {col_name} = FALSE THEN 'Not Attended'
+                            ELSE 'Unknown'
+                        END as "{display_name}"
+                    """)
+                    group_by_cols.append(col_name)
+                elif filter_name == 'partner_levels':
+                    # Special handling for partner_level to cast to text
+                    select_parts.append(f'COALESCE({col_name}::text, \'Unknown\') as "{display_name}"')
+                    group_by_cols.append(col_name)
                 else:
-                    select_parts.append(f"COALESCE({col}, 'Unknown') as \"{col.replace('_', ' ').title()}\"")
+                    select_parts.append(f'COALESCE({col_name}, \'Unknown\') as "{display_name}"')
+                    group_by_cols.append(col_name)
 
-    # Add selected metrics to select_parts (these come after grouping columns)
+    # Add selected metrics to select_parts
     for metric in selected_metrics:
         if metric in metrics['basic_metrics'].values():
             # Add basic count metrics
@@ -243,75 +285,35 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
 
     # Build the final query
     query = f"""
+    {base_query}
     SELECT {', '.join(select_parts)}
-    FROM partner.partner_info
-    WHERE is_internal = FALSE
+    FROM partner_plans
     """
     
-    # Only add where_clause if it's not empty and we have parameters
+    # Add where_clause if provided
     if where_clause and params:
-        query += f" AND {where_clause}"
+        query += f" WHERE {where_clause}"
     
-    # Handle GROUP BY - use explicit group_by parameter if provided
-    if group_by:
-        query += f" GROUP BY {', '.join(group_by)}"
-        # Add ORDER BY to ensure consistent ordering using the same order as group_by_order
-        order_cols = [col for col in group_by_order if col in group_by]
-        query += f" ORDER BY {', '.join(order_cols)}"
-    else:
-        # Only add GROUP BY if we have non-aggregated columns (fallback behavior)
-        group_by_cols = [col for col in select_parts if ' as ' not in col.lower() and 'count(' not in col.lower()]
-        if group_by_cols:
-            query += f" GROUP BY {', '.join(group_by_cols)}"
-            query += f" ORDER BY {', '.join(group_by_cols)}"
+    # Add GROUP BY if we have grouping columns
+    if group_by_cols:
+        query += f"\nGROUP BY {', '.join(group_by_cols)}"
+        # Add ORDER BY to ensure consistent ordering
+        query += f"\nORDER BY {', '.join(group_by_cols)}"
     
     # Execute the query
     conn = get_db_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-            # Debug print with safe parameter handling
+            # Debug print
             if params:
-                try:
-                    print("Query parameters:", params)
-                    print("Final query:", cursor.mogrify(query, params).decode())
-                except Exception as e:
-                    print("Query:", query)
-                    print("Parameters:", params)
-                    print("Mogrify error:", str(e))
+                print("Query parameters:", params)
+                print("Final query:", cursor.mogrify(query, params).decode())
             else:
                 print("Final query:", query)
             
-            # Execute the query with parameters
             cursor.execute(query, params if params else None)
             results = cursor.fetchall()
             df = pd.DataFrame(results)
-            
-            # CRITICAL FIX: Reorder DataFrame columns to ensure proper order
-            if not df.empty and group_by:
-                # Define the desired column order
-                desired_order = []
-                
-                # Add grouping columns first in the correct order
-                column_aliases = {
-                    'partner_region': 'Region',
-                    'partner_country': 'Country', 
-                    'aff_type': 'Plan',
-                    'partner_platform': 'Platform',
-                    'attended_onboarding_event': 'Attended Event',
-                    'partner_level': 'Partner Level'
-                }
-                
-                for col in group_by_order:
-                    if col in group_by and column_aliases.get(col) in df.columns:
-                        desired_order.append(column_aliases[col])
-                
-                # Add all other columns (metrics) that are not grouping columns
-                for col in df.columns:
-                    if col not in desired_order:
-                        desired_order.append(col)
-                
-                # Reorder the DataFrame columns
-                df = df[desired_order]
             
             # Format the metrics
             if not df.empty:
@@ -386,11 +388,16 @@ def get_filter_options():
 
             # Onboarding Event Status
             cursor.execute("""
-                SELECT DISTINCT attended_onboarding_event 
+                SELECT DISTINCT 
+                    CASE 
+                        WHEN attended_onboarding_event = TRUE THEN 'Attended'
+                        WHEN attended_onboarding_event = FALSE THEN 'Not Attended'
+                        ELSE 'Unknown'
+                    END as event_status
                 FROM partner.partner_info
                 WHERE attended_onboarding_event IS NOT NULL 
                 AND is_internal = FALSE
-                ORDER BY attended_onboarding_event;
+                ORDER BY event_status;
             """)
             event_statuses = [row[0] for row in cursor.fetchall()]
 
@@ -425,43 +432,47 @@ def create_filter_query(filters):
     conditions = []
     params = []
     
-    for key, values in filters.items():
-        # Skip if values is empty or only contains "All"
-        if not values or values == ["All"] or not isinstance(values, list):
+    for filter_name, filter_data in filters.items():
+        # Skip if no filter data
+        if not filter_data:
             continue
             
-        if key == 'plan_types':
-            # Handle plan types differently as they're boolean columns
-            plan_conditions = []
-            plan_column_map = {
-                'Revenue Share': 'is_revshare_plan',
-                'Turnover': 'is_turnover_plan',
-                'CPA': 'is_cpa_plan',
-                'IB': 'is_ib_plan',
-                'Master': 'is_master_plan'
-            }
-            for plan in values:
-                if plan in plan_column_map:
-                    plan_conditions.append(f"{plan_column_map[plan]} = TRUE")
-            if plan_conditions:
-                conditions.append(f"({' OR '.join(plan_conditions)})")
-        else:
-            col_map = {
-                'partner_regions': 'partner_region',
-                'partner_countries': 'partner_country',
-                'partner_platforms': 'partner_platform',
-                'aff_types': 'aff_type',
-                'partner_levels': 'partner_level',
-                'event_statuses': 'attended_onboarding_event',
-                'acquisition_types': 'earning_acquisition'
-            }
-            if key in col_map and values:
-                # Filter out None and "All" values
-                valid_values = [v for v in values if v is not None and v != "All"]
-                if valid_values:
+        # Get the selected values from the filter
+        values = filter_data.get('values', [])
+        
+        # Skip if values is empty or only contains "All"
+        if not values or values == ["All"]:
+            continue
+            
+        col_map = {
+            'partner_regions': 'partner_region',
+            'partner_countries': 'partner_country',
+            'partner_platforms': 'partner_platform',
+            'aff_types': 'aff_type',
+            'partner_levels': 'partner_level',
+            'event_statuses': 'attended_onboarding_event',
+            'acquisition_types': 'earning_acquisition',
+            'plan_types': 'plan_type'
+        }
+        
+        if filter_name in col_map:
+            # Filter out None and "All" values
+            valid_values = [v for v in values if v is not None and v != "All"]
+            if valid_values:
+                if filter_name == 'event_statuses':
+                    # Handle event status string values
+                    status_conditions = []
+                    for value in valid_values:
+                        if value == 'Attended':
+                            status_conditions.append(f"{col_map[filter_name]} = TRUE")
+                        elif value == 'Not Attended':
+                            status_conditions.append(f"{col_map[filter_name]} = FALSE")
+                    if status_conditions:
+                        conditions.append(f"({' OR '.join(status_conditions)})")
+                else:
                     # Use a single IN clause with the correct number of placeholders
                     placeholders = ','.join(['%s'] * len(valid_values))
-                    conditions.append(f"{col_map[key]} IN ({placeholders})")
+                    conditions.append(f"{col_map[filter_name]} IN ({placeholders})")
                     params.extend(valid_values)
     
     where_clause = " AND ".join(conditions) if conditions else ""
