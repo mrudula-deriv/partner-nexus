@@ -78,8 +78,16 @@ def get_available_metrics():
     }
     return metrics
 
-def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_filters=None):
-    """Fetch metrics data based on available columns"""
+def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_filters=None, group_by=None):
+    """Fetch metrics data based on available columns
+    
+    Args:
+        selected_metrics (list): List of metrics to fetch
+        where_clause (str): SQL WHERE clause for filtering
+        params (list): Parameters for the WHERE clause
+        active_filters (dict): Active filters for column display
+        group_by (list): Optional list of columns to group by. If provided, will use these columns instead of active_filters
+    """
     metrics = get_available_metrics()
     
     # Start with empty select parts
@@ -116,8 +124,36 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
     )
     """
     
-    # Add columns from active filters that should be shown and grouped
-    if active_filters:
+    # Handle grouping columns
+    if group_by:
+        # Use provided group_by columns for Live Screener
+        col_map = {
+            'partner_region': 'Region',
+            'partner_country': 'Country',
+            'aff_type': 'Plan',
+            'partner_platform': 'Platform',
+            'attended_onboarding_event': 'Event Status',
+            'partner_level': 'Partner Level',
+            'plan_type': 'Plan Types'
+        }
+        
+        for col in group_by:
+            if col in col_map:
+                if col == 'attended_onboarding_event':
+                    select_parts.append(f"""
+                        CASE 
+                            WHEN {col} = TRUE THEN 'Attended'
+                            WHEN {col} = FALSE THEN 'Not Attended'
+                            ELSE 'Unknown'
+                        END as "{col_map[col]}"
+                    """)
+                elif col == 'partner_level':
+                    select_parts.append(f'COALESCE({col}::text, \'Unknown\') as "{col_map[col]}"')
+                else:
+                    select_parts.append(f'COALESCE({col}, \'Unknown\') as "{col_map[col]}"')
+                group_by_cols.append(col)
+    elif active_filters:
+        # Use active_filters for Metrics Test
         col_map = {
             'partner_regions': ('partner_region', 'Partner Region'),
             'partner_countries': ('partner_country', 'Partner Country'),
@@ -133,7 +169,6 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
             if filter_data.get('showAsColumn') and filter_name in col_map:
                 col_name, display_name = col_map[filter_name]
                 if filter_name == 'event_statuses':
-                    # Special handling for boolean event status
                     select_parts.append(f"""
                         CASE 
                             WHEN {col_name} = TRUE THEN 'Attended'
@@ -141,14 +176,11 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
                             ELSE 'Unknown'
                         END as "{display_name}"
                     """)
-                    group_by_cols.append(col_name)
                 elif filter_name == 'partner_levels':
-                    # Special handling for partner_level to cast to text
                     select_parts.append(f'COALESCE({col_name}::text, \'Unknown\') as "{display_name}"')
-                    group_by_cols.append(col_name)
                 else:
                     select_parts.append(f'COALESCE({col_name}, \'Unknown\') as "{display_name}"')
-                    group_by_cols.append(col_name)
+                group_by_cols.append(col_name)
 
     # Add selected metrics to select_parts
     for metric in selected_metrics:
@@ -425,7 +457,13 @@ def get_filter_options():
         conn.close()
 
 def create_filter_query(filters):
-    """Create SQL WHERE clause from filters"""
+    """Create SQL WHERE clause from filters
+    
+    Args:
+        filters (dict): Can be either:
+            1. {filter_type: {values: [...], showAsColumn: bool}} (Metrics Test format)
+            2. {filter_type: [...]} (Live Screener format)
+    """
     if not filters:
         return "", []
     
@@ -437,8 +475,8 @@ def create_filter_query(filters):
         if not filter_data:
             continue
             
-        # Get the selected values from the filter
-        values = filter_data.get('values', [])
+        # Handle both filter formats
+        values = filter_data.get('values', []) if isinstance(filter_data, dict) else filter_data
         
         # Skip if values is empty or only contains "All"
         if not values or values == ["All"]:
