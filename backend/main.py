@@ -302,10 +302,9 @@ def get_screener1_data():
         ]
         
         table1_data = fetch_metrics_data(
-            table1_metrics,
-            where_clause,
-            params,
-            active_filters=filters,
+            selected_metrics=table1_metrics,
+            where_clause=where_clause,
+            params=params,
             group_by=['partner_region', 'partner_country', 'aff_type']  # Fixed order: Region → Country → Plan
         )
         
@@ -319,10 +318,9 @@ def get_screener1_data():
         ]
         
         table2_data = fetch_metrics_data(
-            table2_metrics,
-            where_clause,
-            params,
-            active_filters=filters,
+            selected_metrics=table2_metrics,
+            where_clause=where_clause,
+            params=params,
             group_by=['partner_region', 'partner_country', 'partner_platform', 'attended_onboarding_event', 'aff_type']  # Fixed order
         )
         
@@ -377,11 +375,7 @@ def get_screener1_data():
 
 @app.route('/live-screeners/screener2', methods=['POST'])
 def get_screener2_data():
-    """Get data for Live Screener 2 - Trend Analysis
-    
-    Returns pivoted data with Region/Plan as rows and months as columns
-    Shows Application Count and Activation Rate - Signup for each month
-    """
+    """Get data for Live Screener 2 - Trend Analysis"""
     try:
         data = request.get_json() or {}
         filters = data.get('filters', {})
