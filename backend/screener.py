@@ -78,7 +78,7 @@ def get_available_metrics():
     }
     return metrics
 
-def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_filters=None):
+def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_filters=None, group_by=None):
     """Fetch metrics data based on available columns"""
     metrics = get_available_metrics()
     
@@ -116,6 +116,39 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
     )
     """
     
+    # Handle group_by parameter - add columns from group_by to select and group by
+    if group_by:
+        col_map = {
+            'partner_region': 'Region',
+            'partner_country': 'Country', 
+            'aff_type': 'Plan',
+            'partner_platform': 'Platform',
+            'attended_onboarding_event': 'Attended Event',
+            'partner_level': 'Partner Level',
+            'earning_acquisition': 'Earning Acquisition'
+        }
+        
+        for col_name in group_by:
+            if col_name in col_map:
+                display_name = col_map[col_name]
+                if col_name == 'attended_onboarding_event':
+                    # Special handling for boolean event status
+                    select_parts.append(f"""
+                        CASE 
+                            WHEN {col_name} = TRUE THEN 'true'
+                            WHEN {col_name} = FALSE THEN 'false'
+                            ELSE 'Unknown'
+                        END as "{display_name}"
+                    """)
+                    group_by_cols.append(col_name)
+                elif col_name == 'partner_level':
+                    # Special handling for partner_level to cast to text
+                    select_parts.append(f'COALESCE({col_name}::text, \'Unknown\') as "{display_name}"')
+                    group_by_cols.append(col_name)
+                else:
+                    select_parts.append(f'COALESCE({col_name}, \'Unknown\') as "{display_name}"')
+                    group_by_cols.append(col_name)
+    
     # Add columns from active filters that should be shown and grouped
     if active_filters:
         col_map = {
@@ -132,23 +165,25 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
         for filter_name, filter_data in active_filters.items():
             if filter_data.get('showAsColumn') and filter_name in col_map:
                 col_name, display_name = col_map[filter_name]
-                if filter_name == 'event_statuses':
-                    # Special handling for boolean event status
-                    select_parts.append(f"""
-                        CASE 
-                            WHEN {col_name} = TRUE THEN 'Attended'
-                            WHEN {col_name} = FALSE THEN 'Not Attended'
-                            ELSE 'Unknown'
-                        END as "{display_name}"
-                    """)
-                    group_by_cols.append(col_name)
-                elif filter_name == 'partner_levels':
-                    # Special handling for partner_level to cast to text
-                    select_parts.append(f'COALESCE({col_name}::text, \'Unknown\') as "{display_name}"')
-                    group_by_cols.append(col_name)
-                else:
-                    select_parts.append(f'COALESCE({col_name}, \'Unknown\') as "{display_name}"')
-                    group_by_cols.append(col_name)
+                # Skip if already added by group_by
+                if col_name not in [gb for gb in (group_by or [])]:
+                    if filter_name == 'event_statuses':
+                        # Special handling for boolean event status
+                        select_parts.append(f"""
+                            CASE 
+                                WHEN {col_name} = TRUE THEN 'Attended'
+                                WHEN {col_name} = FALSE THEN 'Not Attended'
+                                ELSE 'Unknown'
+                            END as "{display_name}"
+                        """)
+                        group_by_cols.append(col_name)
+                    elif filter_name == 'partner_levels':
+                        # Special handling for partner_level to cast to text
+                        select_parts.append(f'COALESCE({col_name}::text, \'Unknown\') as "{display_name}"')
+                        group_by_cols.append(col_name)
+                    else:
+                        select_parts.append(f'COALESCE({col_name}, \'Unknown\') as "{display_name}"')
+                        group_by_cols.append(col_name)
 
     # Add selected metrics to select_parts
     for metric in selected_metrics:
