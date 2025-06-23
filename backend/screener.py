@@ -503,12 +503,15 @@ def create_filter_query(filters):
                     for value in valid_values:
                         if value == 'Attended':
                             status_conditions.append(f"{col_map[filter_name]} = TRUE")
+                            params.append(True)
                         elif value == 'Not Attended':
                             status_conditions.append(f"{col_map[filter_name]} = FALSE")
+                            params.append(False)
                     if status_conditions:
-                        conditions.append(f"({' OR '.join(status_conditions)})")
+                        for condition in status_conditions:
+                            conditions.append(condition)
                 else:
-                    # Use a single IN clause with the correct number of placeholders
+                    # Use a single IN clause with the correct number of placeholder
                     placeholders = ','.join(['%s'] * len(valid_values))
                     conditions.append(f"{col_map[filter_name]} IN ({placeholders})")
                     params.extend(valid_values)
