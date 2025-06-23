@@ -73,7 +73,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [sqlResult, setSqlResult] = useState(null);
   const [analyticsResult, setAnalyticsResult] = useState(null);
-  const [activeTab, setActiveTab] = useState('agent-test');
+  const [activeTab, setActiveTab] = useState('live-screeners');
   const [error, setError] = useState(null);
 
   // Screener states
