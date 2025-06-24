@@ -162,7 +162,8 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
             'partner_levels': ('partner_level', 'Partner Level'),
             'event_statuses': ('attended_onboarding_event', 'Event Status'),
             'acquisition_types': ('earning_acquisition', 'Acquisition Type'),
-            'plan_types': ('plan_type', 'Plan Types')
+            'plan_types': ('plan_type', 'Plan Types'),
+            'date_joined': ('date_joined', 'Date Joined')
         }
         
         for filter_name, filter_data in active_filters.items():
@@ -178,9 +179,12 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
                     """)
                 elif filter_name == 'partner_levels':
                     select_parts.append(f'COALESCE({col_name}::text, \'Unknown\') as "{display_name}"')
+                elif filter_name == 'date_joined':
+                    select_parts.append(f'TO_CHAR(date_joined, \'Mon YYYY\') as "{display_name}"')
+                    group_by_cols.append(f'TO_CHAR(date_joined, \'Mon YYYY\')')
                 else:
                     select_parts.append(f'COALESCE({col_name}, \'Unknown\') as "{display_name}"')
-                group_by_cols.append(col_name)
+                    group_by_cols.append(col_name)
 
     # Add selected metrics to select_parts
     for metric in selected_metrics:
@@ -478,6 +482,46 @@ def create_filter_query(filters):
         # Handle both filter formats
         values = filter_data.get('values', []) if isinstance(filter_data, dict) else filter_data
         
+        # Handle date range filter for date_joined
+        if filter_name == 'date_joined':
+            if isinstance(filter_data, dict):
+                start_date = filter_data.get('start_date')
+                end_date = filter_data.get('end_date')
+                
+                if start_date and end_date:
+                    # Convert YYYY-MM to YYYY-MM-DD format for first and last day
+                    start_year, start_month = start_date.split('-')
+                    end_year, end_month = end_date.split('-')
+                    
+                    # Calculate first day of start month and last day of end month
+                    first_day = f"{start_year}-{start_month}-01"
+                    
+                    # For end date, use calendar to get last day of month
+                    import calendar
+                    last_day = f"{end_year}-{end_month}-{calendar.monthrange(int(end_year), int(end_month))[1]}"
+                    
+                    conditions.append("date_joined >= %s AND date_joined <= %s")
+                    params.extend([first_day, last_day])
+                elif start_date:
+                    # Handle single month for start date
+                    start_year, start_month = start_date.split('-')
+                    first_day = f"{start_year}-{start_month}-01"
+                    import calendar
+                    last_day = f"{start_year}-{start_month}-{calendar.monthrange(int(start_year), int(start_month))[1]}"
+                    
+                    conditions.append("date_joined >= %s AND date_joined <= %s")
+                    params.extend([first_day, last_day])
+                elif end_date:
+                    # Handle single month for end date
+                    end_year, end_month = end_date.split('-')
+                    first_day = f"{end_year}-{end_month}-01"
+                    import calendar
+                    last_day = f"{end_year}-{end_month}-{calendar.monthrange(int(end_year), int(end_month))[1]}"
+                    
+                    conditions.append("date_joined >= %s AND date_joined <= %s")
+                    params.extend([first_day, last_day])
+            continue
+            
         # Skip if values is empty or only contains "All"
         if not values or values == ["All"]:
             continue
