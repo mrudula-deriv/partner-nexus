@@ -1,6 +1,7 @@
 import psycopg2
 from dotenv import load_dotenv
 import os
+import json
 from psycopg2.extras import RealDictCursor
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -83,11 +84,32 @@ def get_multi_schema_metadata(schemas: list[str]):
         if key not in schema_dict:
             schema_dict[key] = []
         schema_dict[key].append((row['column_name'], row['data_type']))
+    
+    # Create a directory for storing metadata if it doesn't exist
+    if not os.path.exists('metadata'):
+        os.makedirs('metadata')
+    
+    # Write schema data to JSON file
+    json_file_path = 'metadata/schema_metadata.json'
+    with open(json_file_path, 'w') as f:
+        json.dump(schema_dict, f, indent=4)
+    
+    return json_file_path
+
+def read_schema_metadata():
+    """Read schema metadata from JSON file."""
+    json_file_path = 'metadata/schema_metadata.json'
+    if not os.path.exists(json_file_path):
+        schema_file = get_multi_schema_metadata(['partner', 'client'])
+    
+    with open(json_file_path, 'r') as f:
+        schema_dict = json.load(f)
     return schema_dict
 
-schema = get_multi_schema_metadata(['partner', 'client'])
+# Get schema metadata
+schema_dict = read_schema_metadata()
 table_info = "\n".join(
-    [f"{table}: {', '.join([f'{col} ({dtype})' for col, dtype in cols])}" for table, cols in schema.items()]
+    [f"{table}: {', '.join([f'{col} ({dtype})' for col, dtype in cols])}" for table, cols in schema_dict.items()]
 )
 
 # Define the state type
