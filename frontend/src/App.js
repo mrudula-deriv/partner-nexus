@@ -219,10 +219,40 @@ function App() {
   };
 
   const handleFilterChange = (filterType, values) => {
-    setActiveFilters(prev => ({
-      ...prev,
-      [filterType]: values
-    }));
+    const newFilters = { ...activeFilters };
+    
+    if (filterType === 'date_joined_from' || filterType === 'date_joined_to') {
+      if (!newFilters.date_joined) {
+        newFilters.date_joined = {
+          values: [],
+          showAsColumn: true,
+          start_date: filterType === 'date_joined_from' ? values : '',
+          end_date: filterType === 'date_joined_to' ? values : ''
+        };
+      } else {
+        if (filterType === 'date_joined_from') {
+          newFilters.date_joined.start_date = values;
+        } else {
+          newFilters.date_joined.end_date = values;
+        }
+      }
+      
+      // Remove the filter if both dates are empty
+      if (!newFilters.date_joined.start_date && !newFilters.date_joined.end_date) {
+        delete newFilters.date_joined;
+      }
+    } else {
+      if (!values || (Array.isArray(values) && values.length === 0)) {
+        delete newFilters[filterType];
+      } else {
+        newFilters[filterType] = {
+          values: Array.isArray(values) ? values : [values],
+          showAsColumn: true
+        };
+      }
+    }
+    
+    setActiveFilters(newFilters);
   };
 
   const removeFilter = (filterType) => {
@@ -967,11 +997,13 @@ function App() {
                         )}
                       </div>
                       
+                      {/* Filters section */}
                       <div style={{
                         display: 'grid',
                         gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
                         gap: '1rem'
                       }}>
+                        {/* Existing filters */}
                         {Object.entries(availableFilters).map(([filterType, options]) => (
                           <div key={filterType} className="form-group">
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -1099,12 +1131,7 @@ function App() {
                                         background: 'none',
                                         border: 'none',
                                         cursor: 'pointer',
-                                        color: 'inherit',
-                                        padding: '0 0 0 0.25rem',
-                                        fontSize: '1rem',
-                                        lineHeight: '1',
-                                        display: 'flex',
-                                        alignItems: 'center'
+                                        color: 'inherit'
                                       }}
                                     >
                                       ×
@@ -1115,6 +1142,115 @@ function App() {
                             )}
                           </div>
                         ))}
+
+                        {/* Date Joined Filter */}
+                        <div className="form-group">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                            <label className="form-label" style={{ margin: 0, flex: 1 }}>
+                              Date Joined Filter
+                            </label>
+                            <input
+                              type="checkbox"
+                              checked={!!activeFilters['date_joined']?.showAsColumn}
+                              onChange={() => {
+                                const newFilters = { ...activeFilters };
+                                if (newFilters['date_joined']) {
+                                  delete newFilters['date_joined'];
+                                  setFilterColumnOrder(prev => prev.filter(f => f !== 'date_joined'));
+                                } else {
+                                  newFilters['date_joined'] = {
+                                    start_date: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+                                    end_date: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
+                                    showAsColumn: true
+                                  };
+                                  if (!filterColumnOrder.includes('date_joined')) {
+                                    setFilterColumnOrder(prev => [...prev, 'date_joined']);
+                                  }
+                                }
+                                setActiveFilters(newFilters);
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px',
+                                accentColor: 'var(--primary-red)',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '3px'
+                              }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                            <input
+                              type="month"
+                              value={activeFilters.date_joined?.start_date || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`}
+                              onChange={(e) => {
+                                const newFilters = { ...activeFilters };
+                                if (!newFilters['date_joined']) {
+                                  newFilters['date_joined'] = {
+                                    start_date: e.target.value,
+                                    end_date: e.target.value,
+                                    showAsColumn: true
+                                  };
+                                } else {
+                                  newFilters['date_joined'] = {
+                                    ...newFilters['date_joined'],
+                                    start_date: e.target.value,
+                                    end_date: e.target.value
+                                  };
+                                }
+                                setActiveFilters(newFilters);
+                              }}
+                              className="form-input"
+                              style={{
+                                opacity: activeFilters['date_joined']?.showAsColumn ? 1 : 0.5,
+                                cursor: activeFilters['date_joined']?.showAsColumn ? 'pointer' : 'not-allowed'
+                              }}
+                              disabled={!activeFilters['date_joined']?.showAsColumn}
+                            />
+                          </div>
+                          {activeFilters['date_joined']?.showAsColumn && (activeFilters.date_joined?.start_date || activeFilters.date_joined?.end_date) && (
+                            <div style={{ 
+                              display: 'flex', 
+                              flexWrap: 'wrap', 
+                              gap: '0.5rem', 
+                              marginTop: '0.5rem',
+                              minHeight: '28px'
+                            }}>
+                              <span 
+                                className="badge badge-red"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  padding: '0.25rem 0.5rem',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                {new Date(activeFilters.date_joined.start_date).toLocaleDateString('default', { month: 'short', year: 'numeric' })}
+                                <button
+                                  onClick={() => {
+                                    const newFilters = { ...activeFilters };
+                                    delete newFilters['date_joined'];
+                                    setFilterColumnOrder(prev => prev.filter(f => f !== 'date_joined'));
+                                    setActiveFilters(newFilters);
+                                  }}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: 'inherit',
+                                    padding: '0 0 0 0.25rem',
+                                    fontSize: '1rem',
+                                    lineHeight: '1',
+                                    display: 'flex',
+                                    alignItems: 'center'
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -1272,13 +1408,16 @@ function App() {
                                   'partner_levels': 'Partner Level',
                                   'event_statuses': 'Event Status',
                                   'acquisition_types': 'Acquisition Type',
-                                  'plan_types': 'Plan Types'  // Add plan_types mapping
+                                  'plan_types': 'Plan Types',
+                                  'date_joined': 'Date Joined'  // Add date_joined mapping
                                 };
                                 return (
                                   <td key={filterType} style={{
                                     backgroundColor: 'var(--bg-tertiary)'
                                   }}>
-                                    {row[colMap[filterType]] || '-'}
+                                    {filterType === 'date_joined' && row[colMap[filterType]] 
+                                      ? new Date(row[colMap[filterType]]).toLocaleDateString('default', { month: 'short', year: 'numeric' })
+                                      : row[colMap[filterType]] || '-'}
                                   </td>
                                 );
                               })}
