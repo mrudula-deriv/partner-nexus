@@ -67,13 +67,45 @@ const ArrowDownIcon = () => (
   </svg>
 );
 
+const SpotlightIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="11" cy="11" r="8"></circle>
+    <path d="m21 21-4.35-4.35"></path>
+    <path d="M11 8v6"></path>
+    <path d="M8 11h6"></path>
+  </svg>
+);
+
+const AlertIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="12" y1="8" x2="12" y2="12"></line>
+    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+  </svg>
+);
+
+const GrowthIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+    <circle cx="9" cy="7" r="4"></circle>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+  </svg>
+);
+
 function App() {
   // All existing state variables remain the same
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [sqlResult, setSqlResult] = useState(null);
   const [analyticsResult, setAnalyticsResult] = useState(null);
-  const [activeTab, setActiveTab] = useState('live-screeners');
+  const [activeTab, setActiveTab] = useState('spotlight'); // Changed default to spotlight
   const [error, setError] = useState(null);
 
   // Screener states
@@ -86,16 +118,20 @@ function App() {
   const [screenerError, setScreenerError] = useState(null);
 
   // Live Screeners states
+  const [liveScreenerData, setLiveScreenerData] = useState(null);
   const [liveScreenerLoading, setLiveScreenerLoading] = useState(false);
   const [liveScreenerError, setLiveScreenerError] = useState(null);
   const [activeScreener, setActiveScreener] = useState(1);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'ascending' });
+  const [selectedFilters, setSelectedFilters] = useState([]);
+  
+  // Add missing state variables for live screeners
   const [screener1Data, setScreener1Data] = useState({ table1: [], table2: [] });
   const [screener2Data, setScreener2Data] = useState([]);
   const [screener3Data, setScreener3Data] = useState({ table1: [], table2: [] });
   const [screener4Data, setScreener4Data] = useState({ cohort_data: [], heatmap_data: [] });
   const [liveFilters, setLiveFilters] = useState({});
   const [dateFilters, setDateFilters] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [selectedDateRange, setSelectedDateRange] = useState(null);
 
   // Enhanced screener states
@@ -501,6 +537,11 @@ function App() {
     setActiveFilters(newFilters);
   };
 
+  const formatNumber = (num) => {
+    if (num === null || num === undefined) return '0';
+    return new Intl.NumberFormat('en-US').format(num);
+  };
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -524,6 +565,13 @@ function App() {
           
           {/* Navigation */}
           <nav className="nav-tabs">
+            <button
+              onClick={() => setActiveTab('spotlight')}
+              className={`nav-tab ${activeTab === 'spotlight' ? 'active' : ''}`}
+            >
+              <SpotlightIcon />
+              Spotlight
+            </button>
             <button
               onClick={() => {
                 setActiveTab('live-screeners');
@@ -557,6 +605,13 @@ function App() {
       </header>
 
       <main className="main-content">
+        {/* Spotlight Dashboard Tab Content */}
+        {activeTab === 'spotlight' && (
+          <div className="fade-in">
+            <SpotlightDashboard />
+          </div>
+        )}
+
         {/* Agent Test Tab Content */}
         {(activeTab === 'agent-test' || activeTab === 'sql' || activeTab === 'analytics') && (
           <div className="fade-in">
@@ -1601,165 +1656,11 @@ function App() {
                       </div>
                     </>
                   )}
-
-                  {/* Screener 4 - Cohort Analysis Controls */}
-                  {activeScreener === 4 && (
-                    <>
-                      <div className="form-group">
-                        <label className="form-label">Breakdown By</label>
-                        <select
-                          value={cohortSettings.breakdown_filter}
-                          onChange={(e) => setCohortSettings(prev => ({...prev, breakdown_filter: e.target.value}))}
-                          className="form-select"
-                        >
-                          <option value="partner_region">Region</option>
-                          <option value="partner_country">Country</option>
-                          <option value="aff_type">Affiliate Type</option>
-                          <option value="partner_platform">Platform</option>
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Result Format</label>
-                        <select
-                          value={cohortSettings.result_filter}
-                          onChange={(e) => setCohortSettings(prev => ({...prev, result_filter: e.target.value}))}
-                          className="form-select"
-                        >
-                          <option value="percentage">Percentage (%)</option>
-                          <option value="absolute">Absolute Numbers</option>
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Milestone Type</label>
-                        <select
-                          value={cohortSettings.milestone_type}
-                          onChange={(e) => setCohortSettings(prev => ({...prev, milestone_type: e.target.value}))}
-                          className="form-select"
-                        >
-                          <option value="first_client_joined_date">First Signup</option>
-                          <option value="first_client_deposit_date">First Deposit</option>
-                          <option value="first_client_trade_date">First Trade</option>
-                          <option value="first_earning_date">First Earning</option>
-                        </select>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Filter Type</label>
-                        <select
-                          value={cohortSettings.date_filter_type || 'rolling'}
-                          onChange={(e) => setCohortSettings(prev => ({...prev, date_filter_type: e.target.value}))}
-                          className="form-select"
-                        >
-                          <option value="rolling">Rolling Range (Last X Months)</option>
-                          <option value="specific">Specific Month/Year</option>
-                          <option value="range">Custom Range</option>
-                        </select>
-                      </div>
-                      
-                      {cohortSettings.date_filter_type === 'rolling' && (
-                        <div className="form-group">
-                          <label className="form-label">Rolling Period</label>
-                          <select
-                            value={cohortSettings.date_range || 12}
-                            onChange={(e) => setCohortSettings(prev => ({...prev, date_range: parseInt(e.target.value)}))}
-                            className="form-select"
-                          >
-                            <option value={3}>Last 3 Months</option>
-                            <option value={6}>Last 6 Months</option>
-                            <option value={12}>Last 12 Months</option>
-                            <option value={18}>Last 18 Months</option>
-                            <option value={24}>Last 24 Months</option>
-                          </select>
-                        </div>
-                      )}
-                      
-                      {/* Cohort View Type - moved to after Rolling Period */}
-                      <div className="form-group">
-                        <label className="form-label">Cohort View Type</label>
-                        <select
-                          value={cohortSettings.cohort_type || 'forward'}
-                          onChange={(e) => setCohortSettings(prev => ({...prev, cohort_type: e.target.value}))}
-                          className="form-select"
-                        >
-                          <option value="forward">Forward Cohort (Join Date → Activation)</option>
-                          <option value="reverse">Reverse Cohort (Activation → Join Date)</option>
-                        </select>
-                      </div>
-                      
-                      {cohortSettings.date_filter_type === 'specific' && (
-                        <>
-                          <div className="form-group">
-                            <label className="form-label">Month</label>
-                            <select
-                              value={cohortSettings.specific_month || new Date().getMonth() + 1}
-                              onChange={(e) => setCohortSettings(prev => ({...prev, specific_month: parseInt(e.target.value)}))}
-                              className="form-select"
-                            >
-                              {[
-                                { value: 1, label: 'January' },
-                                { value: 2, label: 'February' },
-                                { value: 3, label: 'March' },
-                                { value: 4, label: 'April' },
-                                { value: 5, label: 'May' },
-                                { value: 6, label: 'June' },
-                                { value: 7, label: 'July' },
-                                { value: 8, label: 'August' },
-                                { value: 9, label: 'September' },
-                                { value: 10, label: 'October' },
-                                { value: 11, label: 'November' },
-                                { value: 12, label: 'December' }
-                              ].map(month => (
-                                <option key={month.value} value={month.value}>
-                                  {month.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">Year</label>
-                            <select
-                              value={cohortSettings.specific_year || new Date().getFullYear()}
-                              onChange={(e) => setCohortSettings(prev => ({...prev, specific_year: parseInt(e.target.value)}))}
-                              className="form-select"
-                            >
-                              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
-                                <option key={year} value={year}>
-                                  {year}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </>
-                      )}
-                      
-                      {cohortSettings.date_filter_type === 'range' && (
-                        <>
-                          <div className="form-group">
-                            <label className="form-label">From Month-Year</label>
-                            <input
-                              type="month"
-                              value={cohortSettings.start_month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`}
-                              onChange={(e) => setCohortSettings(prev => ({...prev, start_month: e.target.value}))}
-                              className="form-input"
-                            />
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">To Month-Year</label>
-                            <input
-                              type="month"
-                              value={cohortSettings.end_month || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`}
-                              onChange={(e) => setCohortSettings(prev => ({...prev, end_month: e.target.value}))}
-                              className="form-input"
-                            />
-                          </div>
-                        </>
-                      )}
-                    </>
-                  )}
                 </div>
 
                 {/* Quick Date Range Buttons for Screener 3 */}
-                {activeScreener === 3 && (
-                  <div style={{ marginBottom: '1rem' }}>
+                {activeScreener === 3 && activeTab === 'live-screeners' && (
+                  <div style={{ marginBottom: '1.5rem' }}>
                     <label className="form-label">Quick Date Ranges:</label>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                       {[
@@ -1795,701 +1696,278 @@ function App() {
                   </div>
                 )}
 
-                {/* Clear All Filters Button */}
-                {(Object.values(liveFilters).some(filter => filter && filter.length > 0) || 
-                  (activeScreener === 3 && Object.keys(dateFilters).length > 0)) && (
-                  <div style={{ marginBottom: '1rem' }}>
-                    <button
-                      onClick={() => {
-                        setLiveFilters({});
-                        setDateFilters({});
-                        setSelectedDateRange(null);
-                        if (activeScreener) {
-                          loadLiveScreenerData(activeScreener);
-                        }
-                      }}
-                      className="btn btn-secondary"
-                    >
-                      Clear All Filters
-                    </button>
-                  </div>
-                )}
+                {/* Screener 4 - Cohort Analysis */}
+                {activeScreener === 4 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
+                    {/* Cohort Data Table */}
+                    <div className="card">
+                      <div className="card-header" style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <h3 className="heading-md">
+                          {cohortSettings.cohort_type === 'reverse' 
+                            ? 'Reverse Cohort Analysis (When did activated partners join?)'
+                            : 'Forward Cohort Analysis (How quickly do partners activate after joining?)'}
+                        </h3>
+                        {screener4Data.cohort_data && screener4Data.cohort_data.length > 0 && (
+                          <button
+                            onClick={() => exportToCSV(screener4Data, 'cohort_analysis.csv', 'cohort')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        )}
+                      </div>
+                      
+                      {/* Add description for clarity */}
+                      <div style={{ 
+                        padding: '0.75rem 1rem', 
+                        backgroundColor: 'var(--bg-tertiary)',
+                        borderBottom: '1px solid var(--border-color)'
+                      }}>
+                        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                          {cohortSettings.cohort_type === 'reverse' 
+                            ? 'M1: Joined 0-30 days before activation | M2: Joined 31-60 days before activation | M3: Joined 61-90 days before activation'
+                            : 'M1: Activated within 30 days | M2: Activated within 60 days | M3: Activated within 90 days'}
+                        </p>
+                      </div>
+                      
+                      {screener4Data.cohort_data && screener4Data.cohort_data.length > 0 ? (
+                        <div className="table-container">
+                          <table className="grid-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener4Data.cohort_data[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace('_', ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener4Data.cohort_data).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td 
+                                      key={colIdx}
+                                    >
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="empty-state">
+                          <div className="empty-state-icon">
+                            <RocketIcon />
+                          </div>
+                          <h4 className="empty-state-title">No cohort data available</h4>
+                          <p className="empty-state-text">
+                            Try adjusting the filters or date range.
+                          </p>
+                        </div>
+                      )}
+                    </div>
 
-                {liveScreenerError && (
-                  <div style={{
-                    padding: '1rem',
-                    backgroundColor: 'var(--primary-red-light)',
-                    color: 'var(--primary-red)',
-                    borderRadius: 'var(--radius-md)',
-                    fontSize: '0.875rem',
-                    marginBottom: '1rem'
-                  }}>
-                    {liveScreenerError}
+                    {/* Heatmap Visualization */}
+                    {screener4Data.heatmap_data && screener4Data.heatmap_data.length > 0 && (
+                      <div className="card">
+                        <div className="card-header">
+                          <h3 className="heading-md">Performance Heatmap</h3>
+                        </div>
+                        <div className="card-body">
+                          <div style={{ overflowX: 'auto' }}>
+                            <div style={{
+                              display: 'inline-block',
+                              minWidth: '100%'
+                            }}>
+                              <div style={{
+                                display: 'grid',
+                                gap: '1px',
+                                gridTemplateColumns: `repeat(${Array.from(new Set(screener4Data.heatmap_data.map(d => d.x))).length + 1}, minmax(120px, 1fr))`
+                              }}>
+                                {/* Header */}
+                                <div style={{ padding: '0.5rem', fontWeight: '500', fontSize: '0.75rem' }}></div>
+                                {Array.from(new Set(screener4Data.heatmap_data.map(d => d.x))).map(milestone => (
+                                  <div key={milestone} style={{
+                                    padding: '0.5rem',
+                                    fontWeight: '500',
+                                    fontSize: '0.75rem',
+                                    textAlign: 'center',
+                                    borderBottom: '1px solid var(--border-color)'
+                                  }}>
+                                    {milestone}
+                                  </div>
+                                ))}
+                                
+                                {/* Data Rows */}
+                                {Array.from(new Set(screener4Data.heatmap_data.map(d => d.y))).map(breakdown => (
+                                  <React.Fragment key={breakdown}>
+                                    <div style={{
+                                      padding: '0.5rem',
+                                      fontWeight: '500',
+                                      fontSize: '0.75rem',
+                                      borderRight: '1px solid var(--border-color)',
+                                      backgroundColor: 'var(--bg-tertiary)'
+                                    }}>
+                                      {breakdown}
+                                    </div>
+                                    {Array.from(new Set(screener4Data.heatmap_data.map(d => d.x))).map(milestone => {
+                                      const dataPoint = screener4Data.heatmap_data.find(d => d.x === milestone && d.y === breakdown);
+                                      const value = dataPoint ? dataPoint.value : 0;
+                                      const count = dataPoint ? dataPoint.count : 0;
+                                      const intensity = Math.min(value / 50, 1);
+                                      
+                                      return (
+                                        <div 
+                                          key={`${breakdown}-${milestone}`}
+                                          style={{
+                                            padding: '0.5rem',
+                                            fontSize: '0.75rem',
+                                            textAlign: 'center',
+                                            border: '1px solid var(--border-light)',
+                                            position: 'relative',
+                                            cursor: 'help',
+                                            backgroundColor: `rgba(220, 38, 38, ${intensity})`,
+                                            color: intensity > 0.5 ? 'white' : 'var(--text-primary)'
+                                          }}
+                                          title={`${breakdown} - ${milestone}: ${value}% (${count} partners)`}
+                                        >
+                                          {value.toFixed(1)}%
+                                          <div style={{
+                                            position: 'absolute',
+                                            bottom: '100%',
+                                            left: '50%',
+                                            transform: 'translateX(-50%)',
+                                            marginBottom: '0.5rem',
+                                            padding: '0.25rem 0.5rem',
+                                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                                            color: 'white',
+                                            fontSize: '0.75rem',
+                                            borderRadius: 'var(--radius-sm)',
+                                            whiteSpace: 'nowrap',
+                                            opacity: 0,
+                                            transition: 'opacity 0.2s',
+                                            zIndex: 10,
+                                            pointerEvents: 'none'
+                                          }}
+                                          className="heatmap-tooltip"
+                                          >
+                                            {count} partners
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </React.Fragment>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Heatmap Legend */}
+                          <div style={{
+                            marginTop: '1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '1rem'
+                          }}>
+                            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Performance Rate:</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>0%</span>
+                              <div style={{ display: 'flex' }}>
+                                {[0, 0.2, 0.4, 0.6, 0.8, 1].map(intensity => (
+                                  <div 
+                                    key={intensity}
+                                    style={{
+                                      width: '16px',
+                                      height: '16px',
+                                      backgroundColor: `rgba(220, 38, 38, ${intensity})`
+                                    }}
+                                  ></div>
+                                ))}
+                              </div>
+                              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>50%+</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cohort Summary */}
+                    {screener4Data.cohort_data && screener4Data.cohort_data.length > 0 && (
+                      <div className="card" style={{
+                        backgroundColor: 'var(--bg-tertiary)',
+                        border: '1px solid var(--border-color)'
+                      }}>
+                        <div className="card-body">
+                          <h4 className="heading-sm" style={{ color: 'var(--text-primary)', marginBottom: '0.75rem' }}>
+                            Cohort Analysis Summary
+                          </h4>
+                          <div style={{
+                            display: 'grid',
+                            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                            gap: '1rem'
+                          }}>
+                            <div>
+                              <span className="text-sm" style={{ fontWeight: '600' }}>View Type:</span>
+                              <span className="text-sm" style={{ marginLeft: '0.5rem' }}>
+                                {cohortSettings.cohort_type === 'reverse' ? 'Reverse Cohort' : 'Forward Cohort'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-sm" style={{ fontWeight: '600' }}>Cohorts Analyzed:</span>
+                              <span className="text-sm" style={{ marginLeft: '0.5rem' }}>{screener4Data.cohort_data.length}</span>
+                            </div>
+                            <div>
+                              <span className="text-sm" style={{ fontWeight: '600' }}>Breakdown:</span>
+                              <span className="text-sm" style={{ marginLeft: '0.5rem' }}>{cohortSettings.breakdown_filter.replace('_', ' ')}</span>
+                            </div>
+                            <div>
+                              <span className="text-sm" style={{ fontWeight: '600' }}>Milestone:</span>
+                              <span className="text-sm" style={{ marginLeft: '0.5rem' }}>{cohortSettings.milestone_type.replace('_', ' ').replace('date', '')}</span>
+                            </div>
+                            <div>
+                              <span className="text-sm" style={{ fontWeight: '600' }}>Date Filter:</span>
+                              <span className="text-sm" style={{ marginLeft: '0.5rem' }}>
+                                {
+                                  cohortSettings.date_filter_type === 'rolling' 
+                                    ? `Last ${cohortSettings.date_range} months`
+                                    : cohortSettings.date_filter_type === 'specific'
+                                    ? `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][cohortSettings.specific_month - 1]} ${cohortSettings.specific_year}`
+                                    : cohortSettings.date_filter_type === 'range'
+                                    ? `${cohortSettings.start_month} to ${cohortSettings.end_month}`
+                                    : 'Rolling 12 months'
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Screener 1 - Performance Overview */}
-            {activeScreener === 1 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
-                {/* Table 1 - Region/Plan Overview */}
-                <div className="card">
-                  <div className="card-header" style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <h3 className="heading-md">Performance by Region & Plan</h3>
-                    {screener1Data.table1 && screener1Data.table1.length > 0 && (
-                      <button
-                        onClick={() => exportToCSV(screener1Data.table1, 'performance_by_region_plan.csv')}
-                        className="btn btn-sm btn-primary"
-                      >
-                        <DownloadIcon />
-                        Export CSV
-                      </button>
-                    )}
-                  </div>
-                  {screener1Data.table1 && screener1Data.table1.length > 0 ? (
-                    <div className="table-container">
-                      <table className="grid-table">
-                        <thead>
-                          <tr>
-                            {Object.keys(screener1Data.table1[0] || {}).map(column => (
-                              <th
-                                key={column}
-                                className="sortable"
-                                onClick={() => handleSort(column)}
-                              >
-                                <div style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem'
-                                }}>
-                                  {column}
-                                  {sortConfig.key === column && (
-                                    sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
-                                  )}
-                                </div>
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortData(screener1Data.table1).map((row, idx) => (
-                            <tr key={idx}>
-                              {Object.values(row).map((value, colIdx) => (
-                                <td key={colIdx}>
-                                  {value}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      <p>No data available</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Table 2 - Platform/Event Overview */}
-                <div className="card">
-                  <div className="card-header" style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <h3 className="heading-md">Performance by Platform & Events</h3>
-                    {screener1Data.table2 && screener1Data.table2.length > 0 && (
-                      <button
-                        onClick={() => exportToCSV(screener1Data.table2, 'performance_by_platform_events.csv')}
-                        className="btn btn-sm btn-primary"
-                      >
-                        <DownloadIcon />
-                        Export CSV
-                      </button>
-                    )}
-                  </div>
-                  {screener1Data.table2 && screener1Data.table2.length > 0 ? (
-                    <div className="table-container">
-                      <table className="grid-table">
-                        <thead>
-                          <tr>
-                            {Object.keys(screener1Data.table2[0] || {}).map(column => (
-                              <th
-                                key={column}
-                                className="sortable"
-                                onClick={() => handleSort(column)}
-                              >
-                                <div style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem'
-                                }}>
-                                  {column}
-                                  {sortConfig.key === column && (
-                                    sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
-                                  )}
-                                </div>
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortData(screener1Data.table2).map((row, idx) => (
-                            <tr key={idx}>
-                              {Object.values(row).map((value, colIdx) => (
-                                <td key={colIdx}>
-                                  {value}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      <p>No data available</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Screener 2 - Trend Analysis */}
-            {activeScreener === 2 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
-                {/* Trend Data Table */}
-                <div className="card">
-                  <div className="card-header" style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <h3 className="heading-md">Screener 2 - Trend Analysis</h3>
-                    {screener2Data.length > 0 && (
-                      <button
-                        onClick={() => exportToCSV(screener2Data, 'trend_analysis.csv', 'trend')}
-                        className="btn btn-sm btn-primary"
-                      >
-                        <DownloadIcon />
-                        Export CSV
-                      </button>
-                    )}
-                  </div>
-                  
-                  {screener2Data.length > 0 ? (
-                    <div className="table-container">
-                      <table className="data-table trend-analysis-table">
-                        <thead>
-                          <tr>
-                            {/* Fixed columns */}
-                            <th rowSpan="2">Region</th>
-                            <th rowSpan="2">Country</th>
-                            <th rowSpan="2">Plan</th>
-                            
-                            {/* Application Count header */}
-                            <th 
-                              colSpan={screener2Data.months ? screener2Data.months.length : 0}
-                              style={{ 
-                                textAlign: 'center',
-                                backgroundColor: 'var(--bg-tertiary)',
-                                fontWeight: '600'
-                              }}
-                            >
-                              Application Count
-                            </th>
-                            
-                            {/* Activation Rate header */}
-                            <th 
-                              colSpan={screener2Data.months ? screener2Data.months.length : 0}
-                              style={{ 
-                                textAlign: 'center',
-                                backgroundColor: 'var(--bg-tertiary)',
-                                fontWeight: '600'
-                              }}
-                            >
-                              Activation Rate - Signup
-                            </th>
-                          </tr>
-                          <tr>
-                            {/* Month headers for Application Count */}
-                            {screener2Data.months && screener2Data.months.map(month => (
-                              <th key={`app-${month}`} style={{ 
-                                backgroundColor: 'var(--bg-tertiary)',
-                                textAlign: 'center',
-                                fontWeight: '500'
-                              }}>
-                                {month}
-                              </th>
-                            ))}
-                            
-                            {/* Month headers for Activation Rate */}
-                            {screener2Data.months && screener2Data.months.map(month => (
-                              <th key={`rate-${month}`} style={{ 
-                                backgroundColor: 'var(--bg-tertiary)',
-                                textAlign: 'center',
-                                fontWeight: '500'
-                              }}>
-                                {month}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {screener2Data.map((row, idx) => (
-                            <tr key={idx}>
-                              <td style={{ fontWeight: '500' }}>{row.Region}</td>
-                              <td style={{ fontWeight: '500' }}>{row.Country}</td>
-                              <td style={{ fontWeight: '500' }}>{row.Plan}</td>
-                              
-                              {/* Application Count values */}
-                              {screener2Data.months && screener2Data.months.map(month => (
-                                <td key={`app-${month}-${idx}`} style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.8125rem' }}>
-                                  {row[`App Count - ${month}`] || 0}
-                                </td>
-                              ))}
-                              
-                              {/* Activation Rate values */}
-                              {screener2Data.months && screener2Data.months.map(month => (
-                                <td key={`rate-${month}-${idx}`} style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.8125rem' }}>
-                                  {row[`Act Rate - ${month}`] || '0.00%'}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      <div className="empty-state-icon">
-                        <TrendingIcon />
-                      </div>
-                      <h4 className="empty-state-title">No trend data available</h4>
-                      <p className="empty-state-text">
-                        Try adjusting the analysis period or filters.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Screener 3 - Individual Partner */}
-            {activeScreener === 3 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
-                {/* Table 1 - Partner Overview */}
-                <div className="card">
-                  <div className="card-header" style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <h3 className="heading-md">Partner Overview by Region</h3>
-                    {screener3Data.table1 && screener3Data.table1.length > 0 && (
-                      <button
-                        onClick={() => exportToCSV(screener3Data.table1, 'partner_overview.csv')}
-                        className="btn btn-sm btn-primary"
-                      >
-                        <DownloadIcon />
-                        Export CSV
-                      </button>
-                    )}
-                  </div>
-                  {screener3Data.table1 && screener3Data.table1.length > 0 ? (
-                    <div className="table-container">
-                      <table className="grid-table">
-                        <thead>
-                          <tr>
-                            {Object.keys(screener3Data.table1[0] || {}).map(column => (
-                              <th
-                                key={column}
-                                className="sortable"
-                                onClick={() => handleSort(column)}
-                              >
-                                <div style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem'
-                                }}>
-                                  {column}
-                                  {sortConfig.key === column && (
-                                    sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
-                                  )}
-                                </div>
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortData(screener3Data.table1).map((row, idx) => (
-                            <tr key={idx}>
-                              {Object.values(row).map((value, colIdx) => (
-                                <td key={colIdx}>
-                                  {value}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      <p>No data available</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Table 2 - Individual Partner Details */}
-                <div className="card">
-                  <div className="card-header" style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <div>
-                      <h3 className="heading-md">Individual Partner Details</h3>
-                      <p className="text-sm" style={{
-                        color: 'var(--text-secondary)',
-                        marginTop: '0.25rem'
-                      }}>
-                        Showing first 100 partners
-                      </p>
-                    </div>
-                    {screener3Data.table2 && screener3Data.table2.length > 0 && (
-                      <button
-                        onClick={() => exportToCSV(screener3Data.table2, 'individual_partner_details.csv')}
-                        className="btn btn-sm btn-primary"
-                      >
-                        <DownloadIcon />
-                        Export CSV
-                      </button>
-                    )}
-                  </div>
-                  {screener3Data.table2 && screener3Data.table2.length > 0 ? (
-                    <div className="table-container">
-                      <table className="grid-table">
-                        <thead>
-                          <tr>
-                            {Object.keys(screener3Data.table2[0] || {}).map(column => (
-                              <th
-                                key={column}
-                                className="sortable"
-                                onClick={() => handleSort(column)}
-                              >
-                                <div style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem'
-                                }}>
-                                  {column}
-                                  {sortConfig.key === column && (
-                                    sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
-                                  )}
-                                </div>
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortData(screener3Data.table2).map((row, idx) => (
-                            <tr key={idx}>
-                              {Object.values(row).map((value, colIdx) => (
-                                <td key={colIdx}>
-                                  {value}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      <p>No data available</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Screener 4 - Cohort Analysis */}
-            {activeScreener === 4 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
-                {/* Cohort Data Table */}
-                <div className="card">
-                  <div className="card-header" style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <h3 className="heading-md">
-                      {cohortSettings.cohort_type === 'reverse' 
-                        ? 'Reverse Cohort Analysis (When did activated partners join?)'
-                        : 'Forward Cohort Analysis (How quickly do partners activate after joining?)'}
-                    </h3>
-                    {screener4Data.cohort_data && screener4Data.cohort_data.length > 0 && (
-                      <button
-                        onClick={() => exportToCSV(screener4Data, 'cohort_analysis.csv', 'cohort')}
-                        className="btn btn-sm btn-primary"
-                      >
-                        <DownloadIcon />
-                        Export CSV
-                      </button>
-                    )}
-                  </div>
-                  
-                  {/* Add description for clarity */}
-                  <div style={{ 
-                    padding: '0.75rem 1rem', 
-                    backgroundColor: 'var(--bg-tertiary)',
-                    borderBottom: '1px solid var(--border-color)'
-                  }}>
-                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                      {cohortSettings.cohort_type === 'reverse' 
-                        ? 'M1: Joined 0-30 days before activation | M2: Joined 31-60 days before activation | M3: Joined 61-90 days before activation'
-                        : 'M1: Activated within 30 days | M2: Activated within 60 days | M3: Activated within 90 days'}
-                    </p>
-                  </div>
-                  
-                  {screener4Data.cohort_data && screener4Data.cohort_data.length > 0 ? (
-                    <div className="table-container">
-                      <table className="grid-table">
-                        <thead>
-                          <tr>
-                            {Object.keys(screener4Data.cohort_data[0] || {}).map(column => (
-                              <th
-                                key={column}
-                                className="sortable"
-                                onClick={() => handleSort(column)}
-                              >
-                                <div style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: '0.25rem'
-                                }}>
-                                  {column.replace('_', ' ')}
-                                  {sortConfig.key === column && (
-                                    sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
-                                  )}
-                                </div>
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortData(screener4Data.cohort_data).map((row, idx) => (
-                            <tr key={idx}>
-                              {Object.entries(row).map(([key, value], colIdx) => (
-                                <td 
-                                  key={colIdx}
-                                >
-                                  {value}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      <div className="empty-state-icon">
-                        <RocketIcon />
-                      </div>
-                      <h4 className="empty-state-title">No cohort data available</h4>
-                      <p className="empty-state-text">
-                        Try adjusting the filters or date range.
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Heatmap Visualization */}
-                {screener4Data.heatmap_data && screener4Data.heatmap_data.length > 0 && (
-                  <div className="card">
-                    <div className="card-header">
-                      <h3 className="heading-md">Performance Heatmap</h3>
-                    </div>
-                    <div className="card-body">
-                      <div style={{ overflowX: 'auto' }}>
-                        <div style={{
-                          display: 'inline-block',
-                          minWidth: '100%'
-                        }}>
-                          <div style={{
-                            display: 'grid',
-                            gap: '1px',
-                            gridTemplateColumns: `repeat(${Array.from(new Set(screener4Data.heatmap_data.map(d => d.x))).length + 1}, minmax(120px, 1fr))`
-                          }}>
-                            {/* Header */}
-                            <div style={{ padding: '0.5rem', fontWeight: '500', fontSize: '0.75rem' }}></div>
-                            {Array.from(new Set(screener4Data.heatmap_data.map(d => d.x))).map(milestone => (
-                              <div key={milestone} style={{
-                                padding: '0.5rem',
-                                fontWeight: '500',
-                                fontSize: '0.75rem',
-                                textAlign: 'center',
-                                borderBottom: '1px solid var(--border-color)'
-                              }}>
-                                {milestone}
-                              </div>
-                            ))}
-                            
-                            {/* Data Rows */}
-                            {Array.from(new Set(screener4Data.heatmap_data.map(d => d.y))).map(breakdown => (
-                              <React.Fragment key={breakdown}>
-                                <div style={{
-                                  padding: '0.5rem',
-                                  fontWeight: '500',
-                                  fontSize: '0.75rem',
-                                  borderRight: '1px solid var(--border-color)',
-                                  backgroundColor: 'var(--bg-tertiary)'
-                                }}>
-                                  {breakdown}
-                                </div>
-                                {Array.from(new Set(screener4Data.heatmap_data.map(d => d.x))).map(milestone => {
-                                  const dataPoint = screener4Data.heatmap_data.find(d => d.x === milestone && d.y === breakdown);
-                                  const value = dataPoint ? dataPoint.value : 0;
-                                  const count = dataPoint ? dataPoint.count : 0;
-                                  const intensity = Math.min(value / 50, 1);
-                                  
-                                  return (
-                                    <div 
-                                      key={`${breakdown}-${milestone}`}
-                                      style={{
-                                        padding: '0.5rem',
-                                        fontSize: '0.75rem',
-                                        textAlign: 'center',
-                                        border: '1px solid var(--border-light)',
-                                        position: 'relative',
-                                        cursor: 'help',
-                                        backgroundColor: `rgba(220, 38, 38, ${intensity})`,
-                                        color: intensity > 0.5 ? 'white' : 'var(--text-primary)'
-                                      }}
-                                      title={`${breakdown} - ${milestone}: ${value}% (${count} partners)`}
-                                    >
-                                      {value.toFixed(1)}%
-                                      <div style={{
-                                        position: 'absolute',
-                                        bottom: '100%',
-                                        left: '50%',
-                                        transform: 'translateX(-50%)',
-                                        marginBottom: '0.5rem',
-                                        padding: '0.25rem 0.5rem',
-                                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                                        color: 'white',
-                                        fontSize: '0.75rem',
-                                        borderRadius: 'var(--radius-sm)',
-                                        whiteSpace: 'nowrap',
-                                        opacity: 0,
-                                        transition: 'opacity 0.2s',
-                                        zIndex: 10,
-                                        pointerEvents: 'none'
-                                      }}
-                                      className="heatmap-tooltip"
-                                      >
-                                        {count} partners
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </React.Fragment>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Heatmap Legend */}
-                      <div style={{
-                        marginTop: '1rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '1rem'
-                      }}>
-                        <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Performance Rate:</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>0%</span>
-                          <div style={{ display: 'flex' }}>
-                            {[0, 0.2, 0.4, 0.6, 0.8, 1].map(intensity => (
-                              <div 
-                                key={intensity}
-                                style={{
-                                  width: '16px',
-                                  height: '16px',
-                                  backgroundColor: `rgba(220, 38, 38, ${intensity})`
-                                }}
-                              ></div>
-                            ))}
-                          </div>
-                          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>50%+</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Cohort Summary */}
-                {screener4Data.cohort_data && screener4Data.cohort_data.length > 0 && (
-                  <div className="card" style={{
-                    backgroundColor: 'var(--bg-tertiary)',
-                    border: '1px solid var(--border-color)'
-                  }}>
-                    <div className="card-body">
-                      <h4 className="heading-sm" style={{ color: 'var(--text-primary)', marginBottom: '0.75rem' }}>
-                        Cohort Analysis Summary
-                      </h4>
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                        gap: '1rem'
-                      }}>
-                        <div>
-                          <span className="text-sm" style={{ fontWeight: '600' }}>View Type:</span>
-                          <span className="text-sm" style={{ marginLeft: '0.5rem' }}>
-                            {cohortSettings.cohort_type === 'reverse' ? 'Reverse Cohort' : 'Forward Cohort'}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-sm" style={{ fontWeight: '600' }}>Cohorts Analyzed:</span>
-                          <span className="text-sm" style={{ marginLeft: '0.5rem' }}>{screener4Data.cohort_data.length}</span>
-                        </div>
-                        <div>
-                          <span className="text-sm" style={{ fontWeight: '600' }}>Breakdown:</span>
-                          <span className="text-sm" style={{ marginLeft: '0.5rem' }}>{cohortSettings.breakdown_filter.replace('_', ' ')}</span>
-                        </div>
-                        <div>
-                          <span className="text-sm" style={{ fontWeight: '600' }}>Milestone:</span>
-                          <span className="text-sm" style={{ marginLeft: '0.5rem' }}>{cohortSettings.milestone_type.replace('_', ' ').replace('date', '')}</span>
-                        </div>
-                        <div>
-                          <span className="text-sm" style={{ fontWeight: '600' }}>Date Filter:</span>
-                          <span className="text-sm" style={{ marginLeft: '0.5rem' }}>
-                            {
-                              cohortSettings.date_filter_type === 'rolling' 
-                                ? `Last ${cohortSettings.date_range} months`
-                                : cohortSettings.date_filter_type === 'specific'
-                                ? `${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][cohortSettings.specific_month - 1]} ${cohortSettings.specific_year}`
-                                : cohortSettings.date_filter_type === 'range'
-                                ? `${cohortSettings.start_month} to ${cohortSettings.end_month}`
-                                : 'Rolling 12 months'
-                            }
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -2504,6 +1982,7 @@ function App() {
               How to Use
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <p className="text-sm"><strong>Spotlight:</strong> Live dashboard with key partner analytics insights, including event effectiveness, country performance, and retention metrics.</p>
               <p className="text-sm"><strong>Agent Test:</strong> Test natural language queries against your partner database. Choose between SQL Agent (raw SQL results) or SQL + Analytics (includes visualizations and insights).</p>
               <p className="text-sm"><strong>Metrics Screener:</strong> Interactive dashboard for analyzing partner KPI metrics with customizable filters and exportable results.</p>
               <p className="text-sm"><strong>Live Screeners:</strong> Specialized dashboards for performance overview, trend analysis, individual partner tracking, and cohort analysis.</p>
@@ -2599,5 +2078,731 @@ function App() {
     </div>
   );
 }
+
+// Add this component before the SpotlightDashboard component
+const FunnelChart = ({ funnelData, selectedCountry, dateRange }) => {
+  const [countryFilter, setCountryFilter] = useState(selectedCountry || null);
+  const [funnelMetrics, setFunnelMetrics] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchFunnelMetrics();
+  }, [countryFilter, dateRange]);
+
+  const fetchFunnelMetrics = async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      params.append('date_range', dateRange || 90);
+      if (countryFilter && countryFilter !== 'All Countries') {
+        params.append('country', countryFilter);
+      }
+      
+      const response = await fetch(`http://localhost:5000/spotlight/funnel-metrics?${params}`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setFunnelMetrics(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching funnel metrics:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading || !funnelMetrics) {
+    return <div className="loading-spinner"></div>;
+  }
+
+  const { funnel_overview, country_performance, available_countries } = funnelMetrics;
+
+  const stages = [
+    { name: "New Partners Signed Up", value: funnel_overview.total_applications, color: "#3b82f6" },
+    { name: "Activate First Sign Up", value: funnel_overview.signup_activations, color: "#8b5cf6" },
+    { name: "Activate First Deposit", value: funnel_overview.deposit_activations, color: "#10b981" },
+    { name: "Activate First Trade", value: funnel_overview.trade_activations, color: "#06b6d4" },
+    { name: "Activate First Earning", value: funnel_overview.earning_activations, color: "#f97316" }
+  ];
+
+  const conversionRates = [
+    { stage: "Applications → First Client", rate: funnel_overview.apps_to_signup_rate || 0 },
+    { stage: "First Client → First Deposit", rate: funnel_overview.signup_to_deposit_rate || 0 },
+    { stage: "First Deposit → First Trade", rate: funnel_overview.deposit_to_trade_rate || 0 },
+    { stage: "First Trade → First Earnings", rate: funnel_overview.trade_to_earning_rate || 0 }
+  ];
+
+  const formatNumber = (num) => {
+    if (num === null || num === undefined) return '0';
+    return new Intl.NumberFormat('en-US').format(Math.round(num));
+  };
+
+  return (
+    <div className="funnel-section">
+      {/* Funnel Controls */}
+      <div className="funnel-controls">
+        <select
+          value={countryFilter || 'All Countries'}
+          onChange={(e) => setCountryFilter(e.target.value === 'All Countries' ? null : e.target.value)}
+          className="country-filter-select"
+        >
+          <option value="All Countries">All Countries</option>
+          {available_countries.map(country => (
+            <option key={country} value={country}>{country}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="funnel-kpi-grid">
+        <div className="kpi-card">
+          <div className="kpi-label">Overall Activation Rate</div>
+          <div className="kpi-value">{funnel_overview.activation_rate || 0}%</div>
+          <div className="kpi-subtext">Partners with active clients</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Time to First Activation</div>
+          <div className="kpi-value">{Math.round(funnel_overview.avg_days_to_activation || 0)} days</div>
+          <div className="kpi-subtext">Average days to first client</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Active Partners</div>
+          <div className="kpi-value">{funnel_overview.active_partners_rate || 0}%</div>
+          <div className="kpi-subtext">Active in last 30 days</div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-label">Application Growth</div>
+          <div className="kpi-value">
+            {funnel_overview.application_growth_rate > 0 ? '+' : ''}{funnel_overview.application_growth_rate || 0}%
+          </div>
+          <div className="kpi-subtext">vs previous period</div>
+        </div>
+      </div>
+
+      {/* Funnel Visualization */}
+      <div className="funnel-chart">
+        <h4>Partner Activation Funnel {countryFilter ? `- ${countryFilter}` : ''}</h4>
+        <div className="funnel-container">
+          <div className="funnel-stages-list">
+            {stages.map((stage, idx) => {
+              const percentage = idx === 0 ? 100 : Math.round((stage.value / stages[0].value) * 100);
+              const barWidth = (stage.value / stages[0].value) * 100;
+              
+              // Create trapezoid shape using CSS
+              const clipPath = idx === 0 
+                ? 'polygon(0 0, 100% 0, 98% 100%, 2% 100%)' // First stage - widest
+                : idx === stages.length - 1
+                ? 'polygon(10% 0, 90% 0, 80% 100%, 20% 100%)' // Last stage - narrowest
+                : `polygon(${2 + idx * 2}% 0, ${98 - idx * 2}% 0, ${96 - idx * 2}% 100%, ${4 + idx * 2}% 100%)`; // Middle stages
+              
+              return (
+                <div key={idx} className="funnel-stage-row">
+                  <div className="stage-label-left">
+                    <span className="stage-name-label">{stage.name}</span>
+                  </div>
+                  <div className="funnel-bar-container">
+                    <div 
+                      className="funnel-bar"
+                      style={{
+                        width: `${barWidth}%`,
+                        backgroundColor: stage.color,
+                        clipPath: clipPath,
+                      }}
+                    >
+                      <div className="funnel-bar-text">
+                        <span className="percentage-text">{percentage}%</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="stage-value-right">
+                    <span className="stage-count">{formatNumber(stage.value)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Conversion Rates */}
+      <div className="conversion-rates">
+        <h4>Stage-by-Stage Conversion Rates</h4>
+        <div className="conversion-grid">
+          {conversionRates.map((conv, idx) => (
+            <div key={idx} className="conversion-card">
+              <div className="conversion-stage">{conv.stage}</div>
+              <div className={`conversion-rate ${conv.rate > 50 ? 'high' : conv.rate > 25 ? 'medium' : 'low'}`}>
+                {conv.rate}%
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Country Performance Tables - Renamed */}
+      <div className="country-performance-section">
+        <div className="performance-columns">
+          <div className="performance-column">
+            <h4>Top Performing Countries</h4>
+            <table className="performance-table">
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th className="text-right">Applications</th>
+                  <th className="text-right">Activated</th>
+                  <th className="text-right">Avg Days</th>
+                  <th className="text-right">Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {country_performance
+                  .sort((a, b) => (b.activation_rate || 0) - (a.activation_rate || 0))
+                  .slice(0, 10)
+                  .map((country, idx) => (
+                    <tr key={idx}>
+                      <td className="country-name">{country.partner_country}</td>
+                      <td className="text-right">{formatNumber(country.total_applications)}</td>
+                      <td className="text-right">{formatNumber(country.activated_partners)}</td>
+                      <td className="text-right">{Math.round(country.avg_days_to_activation || 0)}</td>
+                      <td className="text-right rate-cell high-rate">
+                        <strong>{country.activation_rate || 0}%</strong>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          
+          <div className="performance-column">
+            <h4>Countries Below Average</h4>
+            <table className="performance-table">
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th className="text-right">Applications</th>
+                  <th className="text-right">Retention</th>
+                  <th className="text-right">Activation Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {country_performance
+                  .sort((a, b) => a.activation_rate - b.activation_rate)
+                  .slice(0, 10)
+                  .map((country, idx) => (
+                    <tr key={idx}>
+                      <td className="country-name">{country.partner_country}</td>
+                      <td className="text-right">{formatNumber(country.total_applications)}</td>
+                      <td className="text-right">{country.retention_rate || 0}%</td>
+                      <td className="text-right rate-cell low-rate">
+                        <strong>{country.activation_rate || 0}%</strong>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Add this component before the export default App line
+const SpotlightDashboard = () => {
+  const [dashboardData, setDashboardData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [dateRange, setDateRange] = useState(90);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [dateRange]);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch(`http://localhost:5000/spotlight/dashboard?date_range=${dateRange}`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setDashboardData(result.data);
+      } else {
+        setError(result.error || 'Failed to fetch dashboard data');
+      }
+    } catch (err) {
+      setError('Failed to connect to server');
+      console.error('Error fetching data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatNumber = (num) => {
+    if (num === null || num === undefined) return '0';
+    return new Intl.NumberFormat('en-US').format(num);
+  };
+
+  const formatCurrency = (num) => {
+    if (num === null || num === undefined) return '$0';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(num);
+  };
+
+  // Show skeleton loader for initial load only
+  if (loading && !dashboardData) {
+    return (
+      <div className="spotlight-dashboard">
+        <div className="loading-state">
+          <div className="spinner"></div>
+          <p>Loading partner analytics...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !dashboardData) {
+    return (
+      <div className="spotlight-dashboard">
+        <div className="error-state">
+          <p>Error: {error}</p>
+          <button onClick={fetchDashboardData}>Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="spotlight-dashboard">
+      {/* Top Controls Bar */}
+      <div className="dashboard-controls">
+        <h1 className="dashboard-title">Partner Spotlight Dashboard</h1>
+        <div className="controls-right">
+          <select
+            value={dateRange} 
+            onChange={(e) => setDateRange(Number(e.target.value))}
+            className="date-filter-select"
+          >
+            <option value={30}>Last 30 Days</option>
+            <option value={60}>Last 60 Days</option>
+            <option value={90}>Last 90 Days</option>
+            <option value={180}>Last 180 Days</option>
+            <option value={365}>Last Year</option>
+            <option value={0}>All Time</option>
+          </select>
+          <button onClick={fetchDashboardData} className="refresh-btn-small">
+            <TrendingIcon /> Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="dashboard-grid">
+        {/* Top Row - Key Metrics */}
+        <div className="widget metric-widget">
+          <h3>Total Applications</h3>
+          {loading ? (
+            <div className="metric-loading">
+              <div className="shimmer"></div>
+            </div>
+          ) : (
+            <>
+              <div className="metric-big">
+                {formatNumber(dashboardData?.overview_metrics?.total_applications || 0)}
+              </div>
+              <div className="metric-trend">
+                {dateRange === 0 ? 'All time' : `Last ${dateRange} days`}
+              </div>
+            </>
+          )}
+        </div>
+        
+        <div className="widget metric-widget">
+          <h3>Activation Rate</h3>
+          {loading ? (
+            <div className="metric-loading">
+              <div className="shimmer"></div>
+            </div>
+          ) : (
+            <>
+              <div className="metric-big">
+                {dashboardData?.overview_metrics?.overall_activation_rate || 0}%
+              </div>
+              <div className="metric-trend">Overall performance</div>
+            </>
+          )}
+        </div>
+        
+        <div className="widget metric-widget">
+          <h3>VAN Trip ROI</h3>
+          {loading ? (
+            <div className="metric-loading">
+              <div className="shimmer"></div>
+            </div>
+          ) : (
+            <>
+              <div className="metric-big">
+                {formatCurrency(dashboardData?.van_roi_data?.total_van_earnings || 0)}
+              </div>
+              <div className="metric-trend">
+                {formatNumber(dashboardData?.van_roi_data?.total_van_partners || 0)} VAN partners
+              </div>
+            </>
+          )}
+        </div>
+        
+        <div className="widget metric-widget">
+          <h3>Network Retention</h3>
+          {loading ? (
+            <div className="metric-loading">
+              <div className="shimmer"></div>
+            </div>
+          ) : (
+            <>
+              <div className="metric-big">
+                {dashboardData?.network_retention?.network_retention_rate || 0}%
+              </div>
+              <div className="metric-trend">Active in last 30 days</div>
+            </>
+          )}
+        </div>
+
+        {/* Event Impact Chart - Now spans 5 columns */}
+        <div className="widget chart-widget event-impact">
+          <h3>Event Effectiveness by Activation Rate</h3>
+          {loading ? (
+            <div className="widget-loading">
+              <div className="shimmer-bars"></div>
+            </div>
+          ) : (
+            <div className="event-effectiveness-chart">
+              {dashboardData?.event_impact?.filter(event => event.event_type !== 'No Event').map((event, idx) => {
+                const barWidth = Math.max(event.activation_rate, 2);
+                const isSmallBar = barWidth < 12; // If less than 12%, consider it small
+                
+                return (
+                  <div key={idx} className="event-bar-row">
+                    <div className="event-info">
+                      <span className="event-name">{event.event_type}</span>
+                      <span className="event-count">{formatNumber(event.partner_count)} partners</span>
+                    </div>
+                    <div className="event-bar-container">
+                      <div 
+                        className={`event-bar ${isSmallBar ? 'small-bar' : ''}`}
+                        style={{
+                          width: `${barWidth}%`,
+                          backgroundColor: event.event_type === 'VAN Trip' ? '#dc2626' : 
+                                         event.event_type === 'Webinar' ? '#059669' :
+                                         event.event_type === 'Conference' ? '#3b82f6' :
+                                         event.event_type === 'Seminar' ? '#8b5cf6' : '#6b7280'
+                        }}
+                      >
+                        <span className="event-rate">{event.activation_rate}%</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {dashboardData?.event_impact?.find(e => e.event_type === 'No Event') && (
+                <div className="no-event-comparison">
+                  <span>Baseline (No Event): {dashboardData.event_impact.find(e => e.event_type === 'No Event').activation_rate}%</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Monthly Trends Chart - Now spans 7 columns in the same row */}
+        <div className="widget chart-widget trends">
+          <h3>Application & Activation Trends</h3>
+          {loading ? (
+            <div className="widget-loading">
+              <div className="shimmer-chart"></div>
+            </div>
+          ) : (
+            <div className="area-chart">
+              <div className="chart-area">
+                {dashboardData?.monthly_trends?.map((month, idx) => (
+                  <div key={idx} className="chart-month">
+                    <div className="chart-bars">
+                      <div 
+                        className="chart-bar apps" 
+                        style={{height: `${(month.applications / Math.max(...dashboardData.monthly_trends.map(m => m.applications))) * 100}%`}}
+                        title={`${formatNumber(month.applications)} applications`}
+                      />
+                      <div 
+                        className="chart-bar active" 
+                        style={{height: `${(month.activations / Math.max(...dashboardData.monthly_trends.map(m => m.applications))) * 100}%`}}
+                        title={`${formatNumber(month.activations)} activations`}
+                      />
+                    </div>
+                    <div className="chart-label">{month.month}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="chart-legend">
+                <span><i className="dot apps"></i>Applications</span>
+                <span><i className="dot active"></i>Activations</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Add Conversion Funnel Section */}
+        <div className="widget funnel-widget">
+          <h3>🔄 Conversion & Activation Funnel</h3>
+          <FunnelChart 
+            funnelData={dashboardData} 
+            selectedCountry={null}
+            dateRange={dateRange}
+          />
+        </div>
+        
+        {/* Platform Comparison - Changed to Pie Chart */}
+        <div className="widget comparison-widget">
+          <h3>Platform Performance</h3>
+          {loading ? (
+            <div className="widget-loading">
+              <div className="shimmer-pie"></div>
+            </div>
+          ) : (
+            <div className="platform-comparison">
+              <div className="platform-pie-chart">
+                {dashboardData?.platform_comparison?.map((platform, idx) => {
+                  const total = dashboardData.platform_comparison.reduce((sum, p) => sum + p.total_partners, 0);
+                  const percentage = ((platform.total_partners / total) * 100).toFixed(1);
+                  const rotation = idx === 0 ? 0 : 
+                    dashboardData.platform_comparison.slice(0, idx).reduce((sum, p) => sum + (p.total_partners / total) * 360, 0);
+                  
+                  return (
+                    <div key={idx} className="pie-segment-wrapper">
+                      <div 
+                        className="pie-segment"
+                        style={{ 
+                          '--percentage': percentage,
+                          '--rotation': rotation,
+                          '--color': idx === 0 ? '#dc2626' : '#3b82f6'
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+                <div className="pie-center">
+                  <div className="pie-total">{formatNumber(dashboardData?.platform_comparison?.reduce((sum, p) => sum + p.total_partners, 0))}</div>
+                  <div className="pie-label">Total Partners</div>
+                </div>
+              </div>
+              <div className="platform-legend">
+                {dashboardData?.platform_comparison?.map((platform, idx) => (
+                  <div key={idx} className="legend-item">
+                    <div className="legend-color" style={{backgroundColor: idx === 0 ? '#dc2626' : '#3b82f6'}}></div>
+                    <div className="legend-info">
+                      <div className="legend-title">{platform.partner_platform}</div>
+                      <div className="legend-stats">
+                        <span>{formatNumber(platform.total_partners)} partners</span>
+                        <span className="separator">•</span>
+                        <span>{platform.retention_rate}% retention</span>
+                        <span className="separator">•</span>
+                        <span>{formatCurrency(platform.avg_lifetime_value)} avg LTV</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* VAN Trip Countries */}
+        <div className="widget table-widget van-trips">
+          <h3>VAN Trip Performance by Country</h3>
+          {loading ? (
+            <div className="widget-loading">
+              <div className="shimmer-table"></div>
+            </div>
+          ) : (
+            <table className="performance-table">
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th className="text-right">Partners</th>
+                  <th className="text-right">Rate</th>
+                  <th className="text-right">Earnings</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboardData?.van_trip_effectiveness?.slice(0, 6).map((country, idx) => (
+                  <tr key={idx}>
+                    <td className="country-name">{country.country}</td>
+                    <td className="text-right">{formatNumber(country.van_trip_partners)}</td>
+                    <td className={`text-right rate-cell ${country.van_activation_rate > 20 ? 'high-rate' : country.van_activation_rate > 10 ? 'medium-rate' : 'low-rate'}`}>
+                      <strong>{country.van_activation_rate}%</strong>
+                    </td>
+                    <td className="text-right">{formatCurrency(country.van_earnings)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Underperforming Countries - Sorted by activation rate */}
+        <div className="widget table-widget underperforming">
+          <h3>⚠️ Countries Needing Attention</h3>
+          {loading ? (
+            <div className="widget-loading">
+              <div className="shimmer-table"></div>
+            </div>
+          ) : (
+            <table className="performance-table">
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th className="text-right">Recent Apps</th>
+                  <th className="text-right">Active</th>
+                  <th className="text-right">Act. Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dashboardData?.underperforming_countries
+                  ?.sort((a, b) => (a.activation_rate || 0) - (b.activation_rate || 0))
+                  .slice(0, 8)
+                  .map((country, idx) => (
+                    <tr key={idx}>
+                      <td className="country-name">{country.country}</td>
+                      <td className="text-right">{formatNumber(country.recent_signups)}</td>
+                      <td className="text-right">{formatNumber(country.active_partners)}</td>
+                      <td className="text-right rate-cell low-rate">
+                        <strong>{country.activation_rate || 0}%</strong>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Country ROI Heatmap - Improved for better readability */}
+        <div className="widget heatmap-widget">
+          <h3>Country ROI Analysis - Top 12</h3>
+          {loading ? (
+            <div className="widget-loading">
+              <div className="shimmer-table"></div>
+            </div>
+          ) : (
+            <div className="roi-table-view">
+              <table className="roi-table">
+                <thead>
+                  <tr>
+                    <th>Country</th>
+                    <th className="text-right">Total Earnings</th>
+                    <th className="text-right">Per Partner</th>
+                    <th className="text-right">Retention</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dashboardData?.country_roi?.slice(0, 12).map((country, idx) => {
+                    const maxEarnings = Math.max(...dashboardData.country_roi.slice(0, 12).map(c => c.total_earnings));
+                    const intensity = Math.min(country.total_earnings / maxEarnings, 1);
+                    
+                    return (
+                      <tr key={idx} className="roi-row">
+                        <td className="country-name">
+                          <div className="roi-indicator" style={{
+                            width: `${intensity * 100}%`,
+                            backgroundColor: `rgba(220, 38, 38, ${0.2 + intensity * 0.6})`
+                          }}></div>
+                          <span>{country.country}</span>
+                        </td>
+                        <td className="text-right earnings-cell">
+                          <strong>{formatCurrency(country.total_earnings)}</strong>
+                        </td>
+                        <td className="text-right">{formatCurrency(country.earnings_per_partner)}</td>
+                        <td className={`text-right ${country.retention_rate > 20 ? 'high-retention' : country.retention_rate > 10 ? 'medium-retention' : 'low-retention'}`}>
+                          <strong>{country.retention_rate}%</strong>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Retention Cohorts */}
+        <div className="widget cohort-widget">
+          <h3>Partner Retention Cohorts</h3>
+          {loading ? (
+            <div className="widget-loading">
+              <div className="shimmer-grid"></div>
+            </div>
+          ) : (
+            <div className="cohort-grid">
+              <div className="cohort-header">
+                <span>Cohort</span>
+                <span>Size</span>
+                <span>Current</span>
+                <span>M+1</span>
+                <span>M+3</span>
+                <span>M+6</span>
+              </div>
+              {dashboardData?.retention_cohorts?.slice(0, 6).map((cohort, idx) => (
+                <div key={idx} className="cohort-row">
+                  <span>{cohort.cohort_month}</span>
+                  <span>{formatNumber(cohort.cohort_size)}</span>
+                  <span className={`retention-cell ${cohort.current_retention > 70 ? 'high' : cohort.current_retention > 50 ? 'medium' : 'low'}`}>
+                    {cohort.current_retention}%
+                  </span>
+                  <span className={`retention-cell ${cohort.m1_retention > 70 ? 'high' : cohort.m1_retention > 50 ? 'medium' : 'low'}`}>
+                    {cohort.m1_retention}%
+                  </span>
+                  <span className={`retention-cell ${cohort.m3_retention > 70 ? 'high' : cohort.m3_retention > 50 ? 'medium' : 'low'}`}>
+                    {cohort.m3_retention}%
+                  </span>
+                  <span className={`retention-cell ${cohort.m6_retention > 70 ? 'high' : cohort.m6_retention > 50 ? 'medium' : 'low'}`}>
+                    {cohort.m6_retention}%
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        {/* AI Insights */}
+        {dashboardData?.ai_insights && (
+          <div className="widget insights-widget">
+            <h3>🤖 Key Insights & Recommendations</h3>
+            {loading ? (
+              <div className="widget-loading">
+                <div className="shimmer-text"></div>
+              </div>
+            ) : (
+              <div className="ai-insights-grid">
+                {Array.isArray(dashboardData.ai_insights) ? (
+                  dashboardData.ai_insights.map((insight, idx) => (
+                    <div key={idx} className="insight-card">
+                      <h4>{insight.title}</h4>
+                      <p className="insight-text">{insight.insight}</p>
+                      <div className="recommendation">
+                        <strong>Action:</strong> {insight.recommendation}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="ai-content">{dashboardData.ai_insights}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default App; 

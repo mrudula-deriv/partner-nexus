@@ -26,6 +26,12 @@ from screener import (
     get_db_connection
 )
 
+# Import spotlight dashboard functions
+from spotlight_dashboard import (
+    get_spotlight_dashboard_data,
+    get_funnel_metrics
+)
+
 # Set up Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
@@ -958,6 +964,53 @@ def get_screener4_data():
             "error": f"Failed to get screener4 data: {str(e)}"
         }), 500
 
+@app.route('/spotlight/dashboard', methods=['GET'])
+def get_spotlight_dashboard():
+    """Get complete spotlight dashboard data"""
+    try:
+        logger.info("Fetching spotlight dashboard data...")
+        
+        # Get date range from query parameter, default to 90 days
+        date_range = request.args.get('date_range', 90, type=int)
+        
+        dashboard_data = get_spotlight_dashboard_data(date_range)
+        
+        return jsonify({
+            'success': True,
+            'data': dashboard_data
+        })
+    except Exception as e:
+        logger.error(f"Error in spotlight dashboard: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/spotlight/funnel-metrics', methods=['GET'])
+def get_funnel_metrics_endpoint():
+    """Get conversion funnel metrics with optional country filter"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        country = request.args.get('country', None)
+        
+        logger.info(f"Fetching funnel metrics for date_range={date_range}, country={country}")
+        
+        # Get funnel data
+        funnel_data = get_funnel_metrics(date_range=date_range, country=country)
+        
+        return jsonify({
+            'success': True,
+            'data': funnel_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in funnel metrics endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({"error": "Endpoint not found"}), 404
@@ -979,6 +1032,8 @@ if __name__ == '__main__':
     print("  • POST /live-screeners/screener2 - Get data for Live Screener 2")
     print("  • POST /live-screeners/screener3 - Get data for Live Screener 3")
     print("  • POST /live-screeners/screener4 - Get data for Live Screener 4")
+    print("  • GET  /spotlight/dashboard - Get complete spotlight dashboard")
+    print("  • GET  /spotlight/funnel-metrics - Get conversion funnel metrics")
     print("\n🌐 API will be available at: http://localhost:5000")
     print("📝 Make sure to start the React frontend on http://localhost:3000")
     
