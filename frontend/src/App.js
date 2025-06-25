@@ -1838,6 +1838,167 @@ function App() {
                 {/* Screener 4 - Cohort Analysis */}
                 {activeScreener === 4 && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginTop: '1.5rem' }}>
+                    {/* Cohort Analysis Settings */}
+                    <div className="card">
+                      <div className="card-header">
+                        <h3 className="heading-md">Cohort Analysis Settings</h3>
+                      </div>
+                      <div className="card-body">
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                          {/* Cohort Type Selection */}
+                          <div className="form-group">
+                            <label className="form-label">Cohort Type</label>
+                            <select
+                              value={cohortSettings.cohort_type}
+                              onChange={(e) => setCohortSettings(prev => ({ ...prev, cohort_type: e.target.value }))}
+                              className="form-select"
+                            >
+                              <option value="forward">Forward Cohort (Time to Activation)</option>
+                              <option value="reverse">Reverse Cohort (When did they join?)</option>
+                            </select>
+                          </div>
+
+                          {/* Milestone Type Selection */}
+                          <div className="form-group">
+                            <label className="form-label">Milestone Type</label>
+                            <select
+                              value={cohortSettings.milestone_type}
+                              onChange={(e) => setCohortSettings(prev => ({ ...prev, milestone_type: e.target.value }))}
+                              className="form-select"
+                            >
+                              <option value="first_client_joined_date">First Client Signup</option>
+                              <option value="first_client_deposit_date">First Client Deposit</option>
+                              <option value="first_client_trade_date">First Client Trade</option>
+                              <option value="first_client_earning_date">First Client Earning</option>
+                            </select>
+                          </div>
+
+                          {/* Breakdown Filter Selection */}
+                          <div className="form-group">
+                            <label className="form-label">Breakdown By</label>
+                            <select
+                              value={cohortSettings.breakdown_filter}
+                              onChange={(e) => setCohortSettings(prev => ({ ...prev, breakdown_filter: e.target.value }))}
+                              className="form-select"
+                            >
+                              <option value="partner_region">Region</option>
+                              <option value="partner_country">Country</option>
+                              <option value="platform">Platform</option>
+                              <option value="plan_type">Plan Type</option>
+                              <option value="partner_level">Partner Level</option>
+                              <option value="event_status">Event Status</option>
+                            </select>
+                          </div>
+
+                          {/* Result Type Selection */}
+                          <div className="form-group">
+                            <label className="form-label">Result Type</label>
+                            <select
+                              value={cohortSettings.result_filter}
+                              onChange={(e) => setCohortSettings(prev => ({ ...prev, result_filter: e.target.value }))}
+                              className="form-select"
+                            >
+                              <option value="percentage">Percentage</option>
+                              <option value="absolute">Absolute Numbers</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Date Filter Section */}
+                        <div style={{ 
+                          borderTop: '1px solid var(--border-color)', 
+                          paddingTop: '1rem',
+                          display: 'grid', 
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                          gap: '1rem' 
+                        }}>
+                          {/* Date Filter Type Selection */}
+                          <div className="form-group">
+                            <label className="form-label">Date Filter Type</label>
+                            <select
+                              value={cohortSettings.date_filter_type}
+                              onChange={(e) => setCohortSettings(prev => ({ ...prev, date_filter_type: e.target.value }))}
+                              className="form-select"
+                            >
+                              <option value="rolling">Rolling Months</option>
+                              <option value="specific">Specific Month</option>
+                              <option value="range">Date Range</option>
+                            </select>
+                          </div>
+
+                          {/* Conditional Date Filter Controls */}
+                          {cohortSettings.date_filter_type === 'rolling' && (
+                            <div className="form-group">
+                              <label className="form-label">Number of Months</label>
+                              <select
+                                value={cohortSettings.date_range}
+                                onChange={(e) => setCohortSettings(prev => ({ ...prev, date_range: parseInt(e.target.value) }))}
+                                className="form-select"
+                              >
+                                {[3, 6, 12, 24, 36].map(months => (
+                                  <option key={months} value={months}>Last {months} Months</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+
+                          {cohortSettings.date_filter_type === 'specific' && (
+                            <>
+                              <div className="form-group">
+                                <label className="form-label">Month</label>
+                                <select
+                                  value={cohortSettings.specific_month}
+                                  onChange={(e) => setCohortSettings(prev => ({ ...prev, specific_month: parseInt(e.target.value) }))}
+                                  className="form-select"
+                                >
+                                  {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
+                                    <option key={month} value={month}>
+                                      {new Date(2000, month - 1).toLocaleString('default', { month: 'long' })}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">Year</label>
+                                <select
+                                  value={cohortSettings.specific_year}
+                                  onChange={(e) => setCohortSettings(prev => ({ ...prev, specific_year: parseInt(e.target.value) }))}
+                                  className="form-select"
+                                >
+                                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(year => (
+                                    <option key={year} value={year}>{year}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </>
+                          )}
+
+                          {cohortSettings.date_filter_type === 'range' && (
+                            <>
+                              <div className="form-group">
+                                <label className="form-label">From Month</label>
+                                <input
+                                  type="month"
+                                  value={cohortSettings.start_month}
+                                  onChange={(e) => setCohortSettings(prev => ({ ...prev, start_month: e.target.value }))}
+                                  className="form-input"
+                                />
+                              </div>
+                              <div className="form-group">
+                                <label className="form-label">To Month</label>
+                                <input
+                                  type="month"
+                                  value={cohortSettings.end_month}
+                                  onChange={(e) => setCohortSettings(prev => ({ ...prev, end_month: e.target.value }))}
+                                  className="form-input"
+                                />
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Cohort Data Table */}
                     <div className="card">
                       <div className="card-header" style={{
