@@ -899,6 +899,13 @@ select.form-select option[value=""] {
   color: var(--primary-red);
 }
 
+.opportunity-rate {
+  color: #dc2626;
+  background-color: #fee2e2;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
 /* ROI Heatmap - Redesigned */
 .heatmap-widget {
   grid-column: span 6;
@@ -985,6 +992,40 @@ select.form-select option[value=""] {
 
 .low-retention {
   color: var(--text-secondary);
+}
+
+/* Country Analysis Widget Styles */
+.widget-header {
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.widget-header h3 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.widget-description {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.no-data {
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 1rem;
+}
+
+.text-center {
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 2rem 1rem;
 }
 
 /* Platform Comparison - Pie Chart - Made smaller */
@@ -1626,6 +1667,209 @@ select:focus {
   line-height: 1.6;
   color: var(--text-primary);
 }
+
+/* AI Insight Tooltip Styles */
+.ai-insight-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ai-insight-icon {
+  background: #dc2626;
+  border: 1px solid #b91c1c;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ai-insight-icon:hover {
+  background: #b91c1c;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.ai-insight-icon:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.ai-insight-text {
+  color: white;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.ai-insight-tooltip {
+  position: fixed;
+  width: 350px;
+  max-height: 450px;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  z-index: 9999;
+  overflow: hidden;
+  animation: fadeIn 0.2s ease-out;
+  pointer-events: auto;
+}
+
+.ai-insight-tooltip-content {
+  padding: 14px 14px 20px 14px;
+  max-height: 420px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.ai-insight-tooltip-content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ai-insight-tooltip-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 2px;
+}
+
+.ai-insight-tooltip-content::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 2px;
+}
+
+.ai-insight-tooltip-content::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+.ai-insight-tooltip-arrow {
+  position: absolute;
+  width: 0;
+  height: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ai-insight-tooltip.to-right .ai-insight-tooltip-arrow {
+  left: -8px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 8px solid white;
+}
+
+.ai-insight-tooltip.to-left .ai-insight-tooltip-arrow {
+  right: -8px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 8px solid white;
+}
+
+.ai-insight-loading-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.loading-spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-top: 2px solid var(--primary-red);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.ai-insight-text-formatted {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.ai-insight-text-formatted ul {
+  margin: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.ai-insight-text-formatted li {
+  margin-bottom: 12px;
+  position: relative;
+  padding-left: 16px;
+  line-height: 1.5;
+}
+
+.ai-insight-text-formatted li:before {
+  content: "•";
+  color: var(--primary-red);
+  font-weight: bold;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.ai-insight-text-formatted li:last-child {
+  margin-bottom: 0;
+}
+
+.ai-insight-text-formatted strong {
+  font-weight: 700;
+}
+
+/* Styling for the bottom Key Insights summary section */
+.ai-summary-text {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  text-align: justify;
+}
+
+/* Special styling when summary text is in the main AI content area */
+.ai-content .ai-summary-text {
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border-left: 4px solid var(--primary-red);
+}
+
+.ai-summary-text strong {
+  font-weight: 700;
+}
+
+.ai-insight-text-formatted .insight-section {
+  margin-bottom: 16px;
+}
+
+.ai-insight-text-formatted .insight-section:last-child {
+  margin-bottom: 0;
+}
+
+.ai-insight-text-formatted .insight-section h4 {
+  color: var(--primary-red);
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid var(--primary-red);
+  padding-bottom: 4px;
+}
+
+
 
 /* Remove old ROI heatmap styles */
 .roi-heatmap {
@@ -2295,5 +2539,188 @@ select:focus {
   .shimmer-pie {
     width: 80px;
     height: 80px;
+  }
+} 
+
+/* Grouped stacked bar chart styles for monthly trends */
+.chart-area.grouped-bar-area {
+  display: flex;
+  align-items: flex-end;
+  height: 220px;
+  min-height: 180px;
+  gap: 0.5rem;
+}
+.chart-month.grouped {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 48px;
+  min-width: 48px;
+  margin: 0 2px;
+}
+.chart-bars-group {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 6px;
+  height: 180px;
+}
+.chart-bar-group {
+  position: relative;
+  width: 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.chart-bar.apps.dw {
+  background: #2563eb;
+  border-radius: 4px 4px 0 0;
+  width: 100%;
+  position: absolute;
+  bottom: 0;
+  z-index: 1;
+  opacity: 0.85;
+}
+.chart-bar.active.dw {
+  background: #60a5fa;
+  border-radius: 0 0 4px 4px;
+  width: 100%;
+  position: absolute;
+  z-index: 2;
+}
+.chart-bar.apps.ma {
+  background: #dc2626;
+  border-radius: 4px 4px 0 0;
+  width: 100%;
+  position: absolute;
+  bottom: 0;
+  z-index: 1;
+  opacity: 0.85;
+}
+.chart-bar.active.ma {
+  background: #f87171;
+  border-radius: 0 0 4px 4px;
+  width: 100%;
+  position: absolute;
+  z-index: 2;
+}
+.chart-label {
+  margin-top: 8px;
+  font-size: 0.95em;
+  color: #444;
+  text-align: center;
+  word-break: keep-all;
+}
+.chart-legend.grouped {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2em;
+  margin-top: 12px;
+  font-size: 0.97em;
+  align-items: center;
+}
+.chart-legend .dot.apps.dw {
+  background: #2563eb;
+}
+.chart-legend .dot.active.dw {
+  background: #60a5fa;
+}
+.chart-legend .dot.apps.ma {
+  background: #dc2626;
+}
+.chart-legend .dot.active.ma {
+  background: #f87171;
+}
+.chart-legend .dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+@media (max-width: 900px) {
+  .chart-area.grouped-bar-area {
+    height: 140px;
+    min-height: 100px;
+  }
+  .chart-bars-group {
+    height: 100px;
+  }
+  .chart-month.grouped {
+    width: 32px;
+    min-width: 32px;
+  }
+  .chart-label {
+    font-size: 0.8em;
+  }
+}
+
+/* Stacked bar chart styles for applications/activations by platform */
+.stacked-bar-area {
+  display: flex;
+  align-items: flex-end;
+  height: 220px;
+  min-height: 180px;
+  gap: 0.5rem;
+}
+.chart-month.stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 36px;
+  min-width: 36px;
+  margin: 0 2px;
+}
+.chart-bar-stack {
+  position: relative;
+  width: 18px;
+  height: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.chart-bar.apps.dw {
+  background: #2563eb;
+  border-radius: 4px 4px 0 0;
+  width: 100%;
+  position: absolute;
+  z-index: 2;
+  opacity: 0.85;
+}
+.chart-bar.apps.ma {
+  background: #dc2626;
+  border-radius: 0 0 4px 4px;
+  width: 100%;
+  position: absolute;
+  z-index: 1;
+  opacity: 0.85;
+}
+.chart-bar.active.dw {
+  background: #60a5fa;
+  border-radius: 4px 4px 0 0;
+  width: 100%;
+  position: absolute;
+  z-index: 2;
+}
+.chart-bar.active.ma {
+  background: #f87171;
+  border-radius: 0 0 4px 4px;
+  width: 100%;
+  position: absolute;
+  z-index: 1;
+}
+@media (max-width: 900px) {
+  .stacked-bar-area {
+    height: 120px;
+    min-height: 80px;
+  }
+  .chart-bar-stack {
+    height: 80px;
+  }
+  .chart-month.stacked {
+    width: 22px;
+    min-width: 22px;
   }
 } 

@@ -309,74 +309,69 @@ def get_spotlight_dashboard_data(date_range: int = 90) -> Dict[str, Any]:
             """)
             country_roi = cursor.fetchall()
             
-            # 5. Underperforming Countries - prioritize countries with significant volume
+            # 5. Countries Needing Attention - focus on countries with volume but poor performance
             cursor.execute(f"""
                 WITH country_performance AS (
                     SELECT 
                         partner_country as country,
-                        COUNT(DISTINCT CASE WHEN date_joined >= CURRENT_DATE - INTERVAL '30 days' 
-                              THEN partner_id END) as recent_signups,
-                        COUNT(DISTINCT CASE WHEN date_joined >= CURRENT_DATE - INTERVAL '60 days'
-                              AND date_joined < CURRENT_DATE - INTERVAL '30 days' 
-                              THEN partner_id END) as previous_signups,
+                        COUNT(DISTINCT partner_id) as total_applications,
+                        COUNT(DISTINCT CASE WHEN first_earning_date IS NOT NULL THEN partner_id END) as activated_partners,
                         COUNT(DISTINCT CASE WHEN last_earning_date >= CURRENT_DATE - INTERVAL '30 days' 
                               THEN partner_id END) as active_partners,
-                        COUNT(DISTINCT CASE WHEN last_earning_date >= CURRENT_DATE - INTERVAL '60 days'
-                              AND last_earning_date < CURRENT_DATE - INTERVAL '30 days' 
-                              THEN partner_id END) as previously_active,
-                        COUNT(DISTINCT partner_id) as total_partners
+                        ROUND(
+                            (COUNT(DISTINCT CASE WHEN first_earning_date IS NOT NULL THEN partner_id END)::numeric / 
+                             NULLIF(COUNT(DISTINCT partner_id), 0)) * 100, 2
+                        ) as activation_rate,
+                        ROUND(
+                            (COUNT(DISTINCT CASE WHEN last_earning_date >= CURRENT_DATE - INTERVAL '30 days' 
+                                  THEN partner_id END)::numeric / 
+                             NULLIF(COUNT(DISTINCT CASE WHEN first_earning_date IS NOT NULL THEN partner_id END), 0)) * 100, 2
+                        ) as retention_rate
                     FROM partner.partner_info
                     WHERE is_internal = FALSE
                     AND partner_country IS NOT NULL
-                    {date_filter if date_range > 0 else ""}
+                    {date_filter}
                     GROUP BY partner_country
-                    HAVING COUNT(DISTINCT CASE WHEN date_joined >= CURRENT_DATE - INTERVAL '30 days' 
-                           THEN partner_id END) >= 15  -- At least 15 recent applications
-                    AND COUNT(DISTINCT CASE WHEN last_earning_date >= CURRENT_DATE - INTERVAL '60 days' 
-                        THEN partner_id END) > 0  -- Must have had some activity to compare
+                    HAVING COUNT(DISTINCT partner_id) >= 50  -- Focus on countries with significant volume
+                    AND COUNT(DISTINCT CASE WHEN first_earning_date IS NOT NULL THEN partner_id END) > 0  -- Must have some activated partners
+                ),
+                ranked_countries AS (
+                    SELECT 
+                        *,
+                        ROW_NUMBER() OVER (ORDER BY total_applications DESC) as volume_rank,
+                        ROW_NUMBER() OVER (ORDER BY activation_rate ASC) as performance_rank
+                    FROM country_performance
                 )
                 SELECT 
                     country,
-                    recent_signups,
+                    total_applications,
+                    activated_partners,
                     active_partners,
-                    ROUND(
-                        CASE 
-                            WHEN previous_signups = 0 THEN 0
-                            ELSE ((recent_signups - previous_signups)::numeric / previous_signups) * 100
-                        END, 2
-                    ) as signup_change,
-                    ROUND(
-                        CASE 
-                            WHEN previously_active = 0 THEN 0
-                            ELSE ((active_partners - previously_active)::numeric / previously_active) * 100
-                        END, 2
-                    ) as activity_change,
-                    ROUND((active_partners::numeric / NULLIF(recent_signups, 0)) * 100, 2) as activation_rate
-                FROM country_performance
-                WHERE (active_partners::numeric / NULLIF(recent_signups, 0)) < 0.2  -- Less than 20% activation rate
-                OR active_partners < previously_active * 0.8  -- 20% or more decline in active partners
-                ORDER BY recent_signups DESC, activity_change ASC
-                LIMIT 10
+                    activation_rate,
+                    retention_rate
+                FROM ranked_countries
+                WHERE activation_rate < 8.0  -- Below 8% activation rate
+                   OR (retention_rate < 50.0 AND retention_rate IS NOT NULL)  -- Below 50% retention
+                ORDER BY total_applications DESC, activation_rate ASC
+                LIMIT 12
             """)
             underperforming_countries = cursor.fetchall()
             
-            # 6. Monthly Trends for Chart
+            # 6. Monthly Trends for Chart (split by platform)
             cursor.execute(f"""
                 SELECT 
                     TO_CHAR(DATE_TRUNC('month', date_joined), 'Mon YY') as month,
+                    COALESCE(partner_platform, 'Unknown') as platform,
                     COUNT(DISTINCT partner_id) as applications,
-                    COUNT(DISTINCT CASE WHEN first_earning_date IS NOT NULL THEN partner_id END) as activations,
-                    ROUND(
-                        (COUNT(DISTINCT CASE WHEN first_earning_date IS NOT NULL THEN partner_id END)::numeric / 
-                         NULLIF(COUNT(DISTINCT partner_id), 0)) * 100, 2
-                    ) as activation_rate
+                    COUNT(DISTINCT CASE WHEN first_earning_date IS NOT NULL THEN partner_id END) as activations
                 FROM partner.partner_info
                 WHERE is_internal = FALSE
                 AND date_joined >= CURRENT_DATE - INTERVAL '12 months'
-                GROUP BY DATE_TRUNC('month', date_joined)
-                ORDER BY DATE_TRUNC('month', date_joined)
+                AND partner_platform IN ('DynamicWorks', 'MyAffiliate')
+                GROUP BY DATE_TRUNC('month', date_joined), partner_platform
+                ORDER BY DATE_TRUNC('month', date_joined), partner_platform
             """)
-            monthly_trends = cursor.fetchall()
+            monthly_trends_by_platform = cursor.fetchall()
             
             # 7. Top Growing Countries
             cursor.execute("""
@@ -424,31 +419,71 @@ def get_spotlight_dashboard_data(date_range: int = 90) -> Dict[str, Any]:
                         temperature=0.7
                     )
                     
-                    # Prepare data summary for AI
+                    # Prepare comprehensive data summary for AI
                     data_summary = f"""
-                    Partner Acquisition Analysis:
-                    - Top VAN Trip country: {van_trip_effectiveness[0]['country'] if van_trip_effectiveness else 'N/A'} 
+                    PARTNER ACQUISITION DASHBOARD ANALYSIS:
+                    
+                    Overview Metrics:
+                    - Total Applications: {overview_metrics['total_applications'] if overview_metrics else 0}
+                    - Overall Activation Rate: {overview_metrics['overall_activation_rate'] if overview_metrics else 0}%
+                    - Network Retention Rate: {network_retention['network_retention_rate'] if network_retention else 0}%
+                    
+                    VAN Trip Performance:
+                    - Top VAN Trip Country: {van_trip_effectiveness[0]['country'] if van_trip_effectiveness else 'N/A'} 
                       with {van_trip_effectiveness[0]['van_activation_rate'] if van_trip_effectiveness else 0}% activation rate
-                    - Most effective event type: {event_impact[0]['event_type'] if event_impact else 'N/A'} 
+                    - Total VAN Earnings: ${van_roi_data['total_van_earnings'] if van_roi_data else 0:,.0f}
+                    - VAN Partners: {van_roi_data['total_van_partners'] if van_roi_data else 0}
+                    
+                    Event Effectiveness:
+                    - Most Effective Event: {event_impact[0]['event_type'] if event_impact else 'N/A'} 
                       with {event_impact[0]['activation_rate'] if event_impact else 0}% activation rate
-                    - Best converting country: {conversion_funnel[0]['country'] if conversion_funnel else 'N/A'} 
+                    - Event Attendees: {event_impact[0]['partner_count'] if event_impact else 0}
+                    
+                    Top Converting Countries:
+                    - Best Performer: {conversion_funnel[0]['country'] if conversion_funnel else 'N/A'} 
                       with {conversion_funnel[0]['activation_rate'] if conversion_funnel else 0}% activation rate
-                    - Network retention rate: {network_retention['network_retention_rate'] if network_retention else 0}%
-                    - Underperforming countries: {len(underperforming_countries)} countries with high volume but low activation
+                    - Average Days to Activate: {conversion_funnel[0]['avg_days_to_activate'] if conversion_funnel else 0} days
+                    
+                    Platform Performance:
+                    - DW vs MyAffiliate comparison available
+                    - Platform retention rates: {[p['retention_rate'] for p in platform_comparison] if platform_comparison else []}%
+                    
+                    Growth Trends:
+                    - Top Growing Country: {top_growing_countries[0]['country'] if top_growing_countries else 'N/A'}
+                      with {top_growing_countries[0]['growth_rate'] if top_growing_countries else 0}% growth
+                    - Countries needing attention: {len(underperforming_countries)} high-volume, low-activation markets
+                    
+                    Retention Insights:
+                    - Recent cohort retention: {retention_cohorts[0]['current_retention'] if retention_cohorts else 0}%
+                    - Partner reactivation data available across {len(country_roi)} countries
                     """
                     
                     messages = [
-                        SystemMessage(content="""You are a partner analytics expert. Provide exactly 4 actionable insights.
-                        Format your response as a JSON array with this structure:
-                        [
-                            {
-                                "title": "Short actionable title",
-                                "insight": "Brief explanation of the finding",
-                                "recommendation": "Specific action to take"
-                            }
-                        ]
-                        Keep each part concise and focused."""),
-                        HumanMessage(content=f"Based on this partner acquisition data, what are the key insights and recommendations?\n\n{data_summary}")
+                        SystemMessage(content="""You are a senior partner analytics expert for affiliate marketing and trading platforms. 
+
+Analyze the data and provide 4 strategic insight cards, each with analysis and separate action.
+
+Focus on:
+1. Event Effectiveness Analysis
+2. Conversion Funnel Optimization  
+3. Geographic Growth Opportunities
+4. Partner Retention Strategy
+
+Format as JSON array:
+[
+    {
+        "title": "Event Effectiveness Analysis",
+        "insight": "• Webinars exhibit the highest activation rate at 10.07%, significantly outperforming the overall 4.34% activation rate. • With 447 attendees, webinars are a scalable event type that effectively drives partner activation. • Strategy should prioritize expanding webinar frequency and content quality to leverage this high conversion channel. • Implementation of personalized messaging and exclusive webinar offers could further boost partner commitment. • Measure success by tracking activation rates from attendees and comparing post-webinar cohort retention against other events.",
+        "recommendation": "Integrate targeted follow-ups post-webinar to convert attendees who are on the fence, aiming to increase activation beyond 10.07%."
+    }
+]
+
+IMPORTANT: 
+- 'insight' should contain 5 analytical bullet points about the data and findings
+- 'recommendation' should contain 1 specific, actionable next step
+- Do NOT include action items or recommendations in the insight bullets
+- Keep insights factual and analytical, keep recommendations actionable and specific"""),
+                        HumanMessage(content=f"Based on this comprehensive partner acquisition data, provide strategic insights:\n\n{data_summary}")
                     ]
                     
                     response = llm.invoke(messages)
@@ -460,7 +495,11 @@ def get_spotlight_dashboard_data(date_range: int = 90) -> Dict[str, Any]:
                     
                 except Exception as e:
                     logger.error(f"Error generating AI insights: {str(e)}")
-                    ai_insights = None
+                    # Provide informative error message for authentication issues
+                    if "401" in str(e) or "Authentication" in str(e):
+                        ai_insights = "API authentication error - please check your LiteLLM proxy configuration and API key"
+                    else:
+                        ai_insights = f"AI insights temporarily unavailable: {str(e)}"
             
             return {
                 'overview_metrics': overview_metrics,
@@ -473,7 +512,7 @@ def get_spotlight_dashboard_data(date_range: int = 90) -> Dict[str, Any]:
                 'retention_cohorts': retention_cohorts,
                 'country_roi': country_roi,
                 'underperforming_countries': underperforming_countries,
-                'monthly_trends': monthly_trends,
+                'monthly_trends': monthly_trends_by_platform,
                 'top_growing_countries': top_growing_countries,
                 'ai_insights': ai_insights,
                 'date_range': date_range,
@@ -578,7 +617,7 @@ def get_funnel_metrics(date_range: int = 90, country: str = None) -> Dict[str, A
             SELECT 
                 cm.*,
                 pm.prev_total_applications,
-                ROUND(CAST(cm.signup_activations AS NUMERIC) / NULLIF(cm.total_applications, 0) * 100, 1) as activation_rate,
+                ROUND(CAST(cm.earning_activations AS NUMERIC) / NULLIF(cm.total_applications, 0) * 100, 1) as activation_rate,
                 ROUND(CAST(cm.active_partners_30d AS NUMERIC) / NULLIF(cm.total_applications, 0) * 100, 1) as active_partners_rate,
                 ROUND(CAST((cm.total_applications - pm.prev_total_applications) AS NUMERIC) / NULLIF(pm.prev_total_applications, 0) * 100, 1) as application_growth_rate,
                 -- Stage-by-stage conversion rates
@@ -615,8 +654,9 @@ def get_funnel_metrics(date_range: int = 90, country: str = None) -> Dict[str, A
                     p.first_client_deposit_date,
                     p.first_client_trade_date,
                     p.first_earning_date,
-                    CASE WHEN p.first_client_joined_date IS NOT NULL THEN 
-                        EXTRACT(EPOCH FROM (p.first_client_joined_date::timestamp - p.date_joined::timestamp)) / 86400.0
+                    p.last_earning_date,
+                    CASE WHEN p.first_earning_date IS NOT NULL THEN 
+                        EXTRACT(EPOCH FROM (p.first_earning_date::timestamp - p.date_joined::timestamp)) / 86400.0
                     END as days_to_activation,
                     CASE WHEN p.last_earning_date >= CURRENT_DATE - INTERVAL '30 days' THEN 1 ELSE 0 END as is_active_last_30d
                 FROM partner.partner_info p
@@ -628,7 +668,7 @@ def get_funnel_metrics(date_range: int = 90, country: str = None) -> Dict[str, A
                 SELECT 
                     partner_country,
                     COUNT(DISTINCT partner_id) as total_applications,
-                    COUNT(DISTINCT CASE WHEN first_client_joined_date IS NOT NULL THEN partner_id END) as activated_partners,
+                    COUNT(DISTINCT CASE WHEN first_earning_date IS NOT NULL THEN partner_id END) as activated_partners,
                     AVG(days_to_activation) as avg_days_to_activation,
                     ROUND(
                         CAST(COUNT(DISTINCT CASE WHEN is_active_last_30d = 1 THEN partner_id END) AS NUMERIC) /

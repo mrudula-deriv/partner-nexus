@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'http://localhost:5001';
 
 // Icon components with consistent styling
 const DatabaseIcon = () => (
@@ -99,6 +99,12 @@ const UsersIcon = () => (
   </svg>
 );
 
+const AIInsightIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+  </svg>
+);
+
 function App() {
   // All existing state variables remain the same
   const [query, setQuery] = useState('');
@@ -161,6 +167,8 @@ function App() {
   const [filterColumnOrder, setFilterColumnOrder] = useState([]);
   const [filterOptions, setFilterOptions] = useState({});
   const [screenerResults, setScreenerResults] = useState(null);
+
+
 
   // All existing functions remain the same
   const handleSqlTest = async () => {
@@ -571,6 +579,8 @@ function App() {
     if (num === null || num === undefined) return '0';
     return new Intl.NumberFormat('en-US').format(num);
   };
+
+
 
   return (
     <div className="app-container">
@@ -2286,7 +2296,7 @@ function App() {
               <p className="text-sm"><strong>Agent Test:</strong> Test natural language queries against your partner database. Choose between SQL Agent (raw SQL results) or SQL + Analytics (includes visualizations and insights).</p>
               <p className="text-sm"><strong>Metrics Screener:</strong> Interactive dashboard for analyzing partner KPI metrics with customizable filters and exportable results.</p>
               <p className="text-sm"><strong>Live Screeners:</strong> Specialized dashboards for performance overview, trend analysis, individual partner tracking, and cohort analysis.</p>
-              <p className="text-sm"><strong>Backend:</strong> Make sure the Flask API is running on http://localhost:5000</p>
+              <p className="text-sm"><strong>Backend:</strong> Make sure the Flask API is running on http://localhost:5001</p>
             </div>
           </div>
         </div>
@@ -2374,13 +2384,163 @@ function App() {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
         }
+
+        /* AI Insight Tooltip Styles */
+        .ai-insight-container {
+          position: relative;
+        }
+
+        .ai-insight-tooltip {
+          position: fixed;
+          width: 450px;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.25);
+          z-index: 9999;
+          animation: tooltipSlideIn 0.3s ease-out;
+          border: 1px solid #e5e7eb;
+        }
+
+        @keyframes tooltipSlideIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px) scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+
+        .ai-insight-tooltip-content {
+          padding: 1.5rem;
+          max-height: 400px;
+          overflow-y: auto;
+          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+          border-radius: 12px 12px 8px 8px;
+        }
+
+        .ai-insight-tooltip-arrow {
+          position: absolute;
+          top: 100%;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 0;
+          height: 0;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 10px solid white;
+        }
+
+        .ai-insight-tooltip-arrow::before {
+          content: '';
+          position: absolute;
+          top: -11px;
+          left: -10px;
+          width: 0;
+          height: 0;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 10px solid #e5e7eb;
+        }
+
+        .ai-insight-tooltip.below .ai-insight-tooltip-arrow {
+          top: -10px;
+          border-top: none;
+          border-bottom: 10px solid white;
+        }
+
+        .ai-insight-tooltip.below .ai-insight-tooltip-arrow::before {
+          top: -9px;
+          border-top: none;
+          border-bottom: 10px solid #e5e7eb;
+        }
+
+        .ai-insight-loading-small {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          color: #6b7280;
+          font-size: 0.9rem;
+        }
+
+        .loading-spinner-small {
+          width: 16px;
+          height: 16px;
+          border: 2px solid #e5e7eb;
+          border-top: 2px solid #667eea;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        .ai-insight-text-formatted {
+          color: #374151;
+          font-size: 0.9rem;
+          line-height: 1.6;
+        }
+
+        .insight-section {
+          margin-bottom: 0.75rem;
+          padding: 0.75rem;
+          border-radius: 8px;
+          background: rgba(255, 255, 255, 0.6);
+          border-left: 3px solid #667eea;
+        }
+
+        .insight-section.warning {
+          background: rgba(254, 243, 199, 0.7);
+          border-left-color: #f59e0b;
+        }
+
+        .insight-section.success {
+          background: rgba(220, 252, 231, 0.7);
+          border-left-color: #10b981;
+        }
+
+        .insight-section.action {
+          background: rgba(239, 246, 255, 0.7);
+          border-left-color: #3b82f6;
+        }
+
+        .insight-section.strategy {
+          background: rgba(245, 243, 255, 0.7);
+          border-left-color: #8b5cf6;
+        }
+
+        .insight-icon {
+          margin-right: 0.5rem;
+          font-size: 1rem;
+        }
+
+        .ai-insight-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          cursor: pointer;
+          transition: all 0.2s;
+          margin-left: 8px;
+          opacity: 0.7;
+        }
+
+        .ai-insight-icon:hover {
+          opacity: 1;
+          transform: scale(1.1);
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
       `}</style>
+
+
     </div>
   );
 }
 
 // Add this component before the SpotlightDashboard component
-const FunnelChart = ({ funnelData, selectedCountry, dateRange }) => {
+const FunnelChart = ({ funnelData, selectedCountry, dateRange, onFunnelDataUpdate }) => {
   const [countryFilter, setCountryFilter] = useState(selectedCountry || null);
   const [funnelMetrics, setFunnelMetrics] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -2398,11 +2558,15 @@ const FunnelChart = ({ funnelData, selectedCountry, dateRange }) => {
         params.append('country', countryFilter);
       }
       
-      const response = await fetch(`http://localhost:5000/spotlight/funnel-metrics?${params}`);
+              const response = await fetch(`${API_BASE_URL}/spotlight/funnel-metrics?${params}`);
       const result = await response.json();
       
       if (result.success) {
         setFunnelMetrics(result.data);
+        // Pass the funnel data to parent component for AI analysis
+        if (onFunnelDataUpdate) {
+          onFunnelDataUpdate(result.data);
+        }
       }
     } catch (err) {
       console.error('Error fetching funnel metrics:', err);
@@ -2574,7 +2738,7 @@ const FunnelChart = ({ funnelData, selectedCountry, dateRange }) => {
           </div>
           
           <div className="performance-column">
-            <h4>Countries Below Average</h4>
+            <h4>🎯 Top Activation Opportunities</h4>
             <table className="performance-table">
               <thead>
                 <tr>
@@ -2586,7 +2750,9 @@ const FunnelChart = ({ funnelData, selectedCountry, dateRange }) => {
               </thead>
               <tbody>
                 {country_performance
-                  .sort((a, b) => a.activation_rate - b.activation_rate)
+                  .filter(country => country.total_applications >= 50 && country.activated_partners > 0)  // Only countries with volume and some activation
+                  .filter(country => country.activation_rate < 8.0 || (country.retention_rate && country.retention_rate < 50.0))  // Below 8% activation or 50% retention
+                  .sort((a, b) => b.total_applications - a.total_applications)  // Sort by volume (highest first)
                   .slice(0, 10)
                   .map((country, idx) => (
                     <tr key={idx}>
@@ -2607,12 +2773,398 @@ const FunnelChart = ({ funnelData, selectedCountry, dateRange }) => {
   );
 };
 
+// Function to format insight text from markdown to HTML with enhanced styling
+const formatInsightText = (text) => {
+  if (!text) return '';
+  
+  // Convert bullet points to HTML list items with enhanced formatting
+  const bulletPoints = text.split('•').filter(point => point.trim());
+  
+  if (bulletPoints.length <= 1) {
+    return `<div class="insight-section">${text}</div>`;
+  }
+  
+  const formattedPoints = bulletPoints.map(point => {
+    const trimmed = point.trim();
+    if (!trimmed) return '';
+    
+    // Simple formatting - just bold important terms
+    let formatted = trimmed
+      // Bold key action words
+      .replace(/\b(Focus|Implement|Consider|Analyze|Monitor|Track|Scale|Optimize|Improve|Increase|Reduce|Prioritize|Develop|Create|Build|Launch|Test|Measure|Review|Audit|Study|Replicate|Expand|Add|Remove|Update|Enhance|Strengthen|Accelerate|Automate|Standardize|Deploy|Execute|Establish|Introduce|Leverage|Maximize|Minimize|Streamline)\b/gi, '<strong>$1</strong>')
+      
+      // Bold performance terms
+      .replace(/\b(ROI|return on investment|lifetime value|LTV|conversion rate|activation rate|retention rate|churn rate|growth rate|performance|efficiency|effectiveness|productivity)\b/gi, '<strong>$1</strong>')
+      
+      // Bold business terms
+      .replace(/\b(onboarding|activation|reactivation|engagement|acquisition|retention|monetization|scalability|optimization|automation|personalization)\b/gi, '<strong>$1</strong>');
+    
+    return `<li>${formatted}</li>`;
+  }).filter(point => point);
+  
+  return `<ul>${formattedPoints.join('')}</ul>`;
+};
+
+// Function to format insights for the bottom summary section (paragraph format)
+const formatSummaryInsights = (text) => {
+  if (!text) return '';
+  
+  // Convert bullet points to sentences and create paragraph format
+  const bulletPoints = text.split('•').filter(point => point.trim());
+  
+  if (bulletPoints.length <= 1) {
+    return text;
+  }
+  
+  // Join bullet points into flowing sentences without any bold formatting
+  const sentences = bulletPoints.map(point => {
+    const trimmed = point.trim();
+    if (!trimmed) return '';
+    
+    // No formatting - just plain text
+    let formatted = trimmed;
+    
+    // Ensure sentence ends with period
+    if (!formatted.endsWith('.') && !formatted.endsWith('!') && !formatted.endsWith('?')) {
+      formatted += '.';
+    }
+    
+    return formatted;
+  }).filter(sentence => sentence);
+  
+  // Join sentences with spaces to create flowing paragraphs
+  return sentences.join(' ');
+};
+
+// AI Insight Hook for reusable tooltip functionality
+const useAIInsight = () => {
+  const [showInsight, setShowInsight] = useState(false);
+  const [insightContent, setInsightContent] = useState('');
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ left: 0, top: 0, toRight: true });
+  const tooltipRef = useRef(null);
+  const buttonRef = useRef(null);
+
+  // Close tooltip when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (tooltipRef.current && !tooltipRef.current.contains(event.target)) {
+        setShowInsight(false);
+      }
+    };
+
+    if (showInsight) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showInsight]);
+
+  // Calculate tooltip position
+  const calculateTooltipPosition = () => {
+    if (!buttonRef.current) return { left: 0, top: 0, toRight: true };
+    
+    const buttonRect = buttonRef.current.getBoundingClientRect();
+    const tooltipWidth = 350;
+    const tooltipHeight = 250;
+    
+    // Position to the right of the button using fixed positioning
+    let left = buttonRect.right + 10;
+    let top = buttonRect.top - 10;
+    let toRight = true;
+    
+    // If tooltip would go off screen, position to the left
+    if (left + tooltipWidth > window.innerWidth - 20) {
+      left = buttonRect.left - tooltipWidth - 10;
+      toRight = false;
+    }
+    
+    // Adjust vertical position if needed
+    if (top < 20) {
+      top = 20;
+    } else if (top + tooltipHeight > window.innerHeight - 20) {
+      top = window.innerHeight - tooltipHeight - 20;
+    }
+    
+    return { left, top, toRight };
+  };
+
+  const handleInsightClick = async (title, data, widgetType) => {
+    if (showInsight) {
+      setShowInsight(false);
+      return;
+    }
+    
+    // Calculate position before showing tooltip
+    const position = calculateTooltipPosition();
+    setTooltipPosition(position);
+    
+    setInsightLoading(true);
+    setShowInsight(true);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/ai-insight`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          widget_type: widgetType || title,
+          data: data,
+          title: title
+        })
+      });
+      
+      const result = await response.json();
+      setInsightContent(result.insight || 'No insights available at this time.');
+    } catch (error) {
+      setInsightContent('Unable to generate AI insights at this time. Please try again later.');
+    } finally {
+      setInsightLoading(false);
+    }
+  };
+
+  return {
+    showInsight,
+    insightContent,
+    insightLoading,
+    tooltipPosition,
+    tooltipRef,
+    buttonRef,
+    handleInsightClick
+  };
+};
+
+// Country Analysis Tabs Component
+// Country Analysis Widget Component
+const CountryAnalysisWidget = ({ title, description, data, columns, loading, formatNumber, onAIInsight }) => {
+  const [showInsight, setShowInsight] = useState(false);
+  const [insightContent, setInsightContent] = useState('');
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ left: 0, top: 0, below: false });
+  const tooltipRef = useRef(null);
+  const buttonRef = useRef(null);
+
+  // Close tooltip when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (tooltipRef.current && !tooltipRef.current.contains(event.target)) {
+        setShowInsight(false);
+      }
+    };
+
+    if (showInsight) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showInsight]);
+
+  // Calculate tooltip position
+  const calculateTooltipPosition = () => {
+    if (!buttonRef.current) return { left: 0, top: 0, toRight: true };
+    
+    const buttonRect = buttonRef.current.getBoundingClientRect();
+    const tooltipWidth = 350;
+    const tooltipHeight = 250;
+    
+    // Position to the right of the button using fixed positioning
+    let left = buttonRect.right + 10;
+    let top = buttonRect.top - 10;
+    let toRight = true;
+    
+    // If tooltip would go off screen, position to the left
+    if (left + tooltipWidth > window.innerWidth - 20) {
+      left = buttonRect.left - tooltipWidth - 10;
+      toRight = false;
+    }
+    
+    // Adjust vertical position if needed
+    if (top < 20) {
+      top = 20;
+    } else if (top + tooltipHeight > window.innerHeight - 20) {
+      top = window.innerHeight - tooltipHeight - 20;
+    }
+    
+    return { left, top, toRight };
+  };
+  const formatValue = (value, format, highlight) => {
+    if (value === null || value === undefined) return '-';
+    
+    switch (format) {
+      case 'number':
+        return typeof value === 'number' ? formatNumber(value) : value;
+      case 'percentage':
+        const numValue = typeof value === 'string' ? parseFloat(value) : value;
+        return `${numValue?.toFixed(1) || 0}%`;
+      case 'currency':
+        const currValue = typeof value === 'string' ? parseFloat(value) : value;
+        return `$${currValue?.toLocaleString() || 0}`;
+      case 'decimal':
+        const decValue = typeof value === 'string' ? parseFloat(value) : value;
+        return decValue?.toFixed(1) || '0.0';
+      default:
+        return value;
+    }
+  };
+
+  const getCellClass = (value, highlight) => {
+    if (!highlight) return '';
+    
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    if (highlight === 'low') {
+      return numValue < 30 ? 'rate-cell high-rate' : numValue < 60 ? 'rate-cell medium-rate' : 'rate-cell';
+    } else if (highlight === 'high') {
+      return numValue > 100 ? 'rate-cell high-rate' : numValue > 50 ? 'rate-cell medium-rate' : 'rate-cell';
+    } else if (highlight === 'opportunity') {
+      return numValue < 5 ? 'rate-cell opportunity-rate' : numValue < 10 ? 'rate-cell medium-rate' : 'rate-cell';
+    }
+    return '';
+  };
+
+  return (
+    <div className="widget table-widget underperforming">
+      <div className="widget-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', position: 'relative' }}>
+          <h3>{title}</h3>
+          <div className="ai-insight-container" ref={tooltipRef}>
+              <button 
+                ref={buttonRef}
+                className="ai-insight-icon"
+                onClick={async () => {
+                  if (showInsight) {
+                    setShowInsight(false);
+                    return;
+                  }
+                  
+                  // Calculate position before showing tooltip
+                  const position = calculateTooltipPosition();
+                  setTooltipPosition(position);
+                  
+                  setInsightLoading(true);
+                  setShowInsight(true);
+                  
+                  try {
+                    const response = await fetch(`${API_BASE_URL}/ai-insight`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        widget_type: title,
+                        data: data,
+                        title: title
+                      })
+                    });
+                    
+                    const result = await response.json();
+                    setInsightContent(result.insight || 'No insights available at this time.');
+                  } catch (error) {
+                    setInsightContent('Unable to generate AI insights at this time. Please try again later.');
+                  } finally {
+                    setInsightLoading(false);
+                  }
+                }}
+                title="Get AI insights for this widget"
+              >
+                💡
+              </button>
+              
+              {showInsight && (
+                <div 
+                  className={`ai-insight-tooltip ${tooltipPosition.toRight ? 'to-right' : 'to-left'}`}
+                  style={{
+                    left: `${tooltipPosition.left}px`,
+                    top: `${tooltipPosition.top}px`
+                  }}
+                >
+                  <div className="ai-insight-tooltip-content">
+                    {insightLoading ? (
+                      <div className="ai-insight-loading-small">
+                        <div className="loading-spinner-small"></div>
+                        <span>Generating insights...</span>
+                      </div>
+                    ) : (
+                      <div 
+                        className="ai-insight-text-formatted"
+                        dangerouslySetInnerHTML={{ 
+                          __html: formatInsightText(insightContent) 
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="ai-insight-tooltip-arrow"></div>
+                </div>
+              )}
+            </div>
+        </div>
+        <p className="widget-description">{description}</p>
+      </div>
+
+      {loading ? (
+        <div className="widget-loading">
+          <div className="shimmer-table"></div>
+        </div>
+      ) : (
+        <table className="performance-table">
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col.key} className={col.align === 'right' ? 'text-right' : ''}>
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.length > 0 ? (
+              data.map((item, idx) => (
+                <tr key={idx}>
+                  {columns.map((col) => (
+                    <td 
+                      key={col.key} 
+                      className={`${col.align === 'right' ? 'text-right' : ''} ${getCellClass(item[col.key], col.highlight)}`}
+                    >
+                      {col.key === 'country' ? (
+                        <span className="country-name">{item[col.key]}</span>
+                      ) : (
+                        <strong>{formatValue(item[col.key], col.format, col.highlight)}</strong>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={columns.length} className="no-data">
+                  No data available
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
+
 // Add this component before the export default App line
 const SpotlightDashboard = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dateRange, setDateRange] = useState(90);
+  const [funnelData, setFunnelData] = useState(null);
+
+  // AI Insight hooks for each widget that needs them
+  const eventEffectivenessAI = useAIInsight();
+  const conversionFunnelAI = useAIInsight();
+  const countryROIAI = useAIInsight();
+  const retentionCohortsAI = useAIInsight();
 
   useEffect(() => {
     fetchDashboardData();
@@ -2623,7 +3175,7 @@ const SpotlightDashboard = () => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`http://localhost:5000/spotlight/dashboard?date_range=${dateRange}`);
+      const response = await fetch(`${API_BASE_URL}/spotlight/dashboard?date_range=${dateRange}`);
       const result = await response.json();
       
       if (result.success) {
@@ -2653,6 +3205,9 @@ const SpotlightDashboard = () => {
       maximumFractionDigits: 0
     }).format(num);
   };
+
+  // AI Insights function
+
 
   // Show skeleton loader for initial load only
   if (loading && !dashboardData) {
@@ -2771,9 +3326,52 @@ const SpotlightDashboard = () => {
           )}
         </div>
 
-        {/* Event Impact Chart - Now spans 5 columns */}
-        <div className="widget chart-widget event-impact">
-          <h3>Event Effectiveness by Activation Rate</h3>
+        {/* Event Effectiveness by Activation Rate - full width row */}
+        <div className="widget chart-widget event-impact" style={{ gridColumn: 'span 12' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', position: 'relative' }}>
+            <h3>Event Effectiveness by Activation Rate</h3>
+            <div className="ai-insight-container" ref={eventEffectivenessAI.tooltipRef}>
+              <button 
+                ref={eventEffectivenessAI.buttonRef}
+                className="ai-insight-icon"
+                onClick={() => eventEffectivenessAI.handleInsightClick(
+                  'Event Effectiveness by Activation Rate',
+                  dashboardData?.event_impact || [],
+                  'Event Effectiveness'
+                )}
+                title="Get AI insights for this widget"
+              >
+                💡
+              </button>
+              
+              {eventEffectivenessAI.showInsight && (
+                <div 
+                  className={`ai-insight-tooltip ${eventEffectivenessAI.tooltipPosition.toRight ? 'to-right' : 'to-left'}`}
+                  style={{
+                    left: `${eventEffectivenessAI.tooltipPosition.left}px`,
+                    top: `${eventEffectivenessAI.tooltipPosition.top}px`
+                  }}
+                >
+                  <div className="ai-insight-tooltip-content">
+                    {eventEffectivenessAI.insightLoading ? (
+                      <div className="ai-insight-loading-small">
+                        <div className="loading-spinner-small"></div>
+                        <span>Generating insights...</span>
+                      </div>
+                    ) : (
+                      <div 
+                        className="ai-insight-text-formatted"
+                        dangerouslySetInnerHTML={{ 
+                          __html: formatInsightText(eventEffectivenessAI.insightContent) 
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="ai-insight-tooltip-arrow"></div>
+                </div>
+              )}
+            </div>
+          </div>
           {loading ? (
             <div className="widget-loading">
               <div className="shimmer-bars"></div>
@@ -2782,8 +3380,7 @@ const SpotlightDashboard = () => {
             <div className="event-effectiveness-chart">
               {dashboardData?.event_impact?.filter(event => event.event_type !== 'No Event').map((event, idx) => {
                 const barWidth = Math.max(event.activation_rate, 2);
-                const isSmallBar = barWidth < 12; // If less than 12%, consider it small
-                
+                const isSmallBar = barWidth < 12;
                 return (
                   <div key={idx} className="event-bar-row">
                     <div className="event-info">
@@ -2816,37 +3413,105 @@ const SpotlightDashboard = () => {
           )}
         </div>
 
-        {/* Monthly Trends Chart - Now spans 7 columns in the same row */}
-        <div className="widget chart-widget trends">
-          <h3>Application & Activation Trends</h3>
+        {/* Applications by Platform - 6 columns */}
+        <div className="widget chart-widget trends" style={{ gridColumn: 'span 6' }}>
+          <h3>Applications by Platform</h3>
           {loading ? (
             <div className="widget-loading">
               <div className="shimmer-chart"></div>
             </div>
           ) : (
             <div className="area-chart">
-              <div className="chart-area">
-                {dashboardData?.monthly_trends?.map((month, idx) => (
-                  <div key={idx} className="chart-month">
-                    <div className="chart-bars">
-                      <div 
-                        className="chart-bar apps" 
-                        style={{height: `${(month.applications / Math.max(...dashboardData.monthly_trends.map(m => m.applications))) * 100}%`}}
-                        title={`${formatNumber(month.applications)} applications`}
-                      />
-                      <div 
-                        className="chart-bar active" 
-                        style={{height: `${(month.activations / Math.max(...dashboardData.monthly_trends.map(m => m.applications))) * 100}%`}}
-                        title={`${formatNumber(month.activations)} activations`}
-                      />
-                    </div>
-                    <div className="chart-label">{month.month}</div>
-                  </div>
-                ))}
+              <div className="chart-area stacked-bar-area">
+                {(() => {
+                  if (!dashboardData?.monthly_trends) return null;
+                  const months = Array.from(new Set(dashboardData.monthly_trends.map(m => m.month)));
+                  // For scaling
+                  const maxApplications = Math.max(...months.map(month => {
+                    const dw = dashboardData.monthly_trends.find(m => m.month === month && m.platform === 'DynamicWorks') || { applications: 0 };
+                    const ma = dashboardData.monthly_trends.find(m => m.month === month && m.platform === 'MyAffiliate') || { applications: 0 };
+                    return dw.applications + ma.applications;
+                  }));
+                  return months.map((month, idx) => {
+                    const dw = dashboardData.monthly_trends.find(m => m.month === month && m.platform === 'DynamicWorks') || { applications: 0 };
+                    const ma = dashboardData.monthly_trends.find(m => m.month === month && m.platform === 'MyAffiliate') || { applications: 0 };
+                    const dwHeight = (dw.applications / maxApplications) * 100;
+                    const maHeight = (ma.applications / maxApplications) * 100;
+                    return (
+                      <div key={month} className="chart-month stacked">
+                        <div className="chart-bar-stack">
+                          <div
+                            className="chart-bar apps dw"
+                            style={{ height: `${dwHeight}%`, bottom: `${maHeight}%` }}
+                            title={`DynamicWorks: ${formatNumber(dw.applications)} applications`}
+                          />
+                          <div
+                            className="chart-bar apps ma"
+                            style={{ height: `${maHeight}%`, bottom: 0 }}
+                            title={`MyAffiliate: ${formatNumber(ma.applications)} applications`}
+                          />
+                        </div>
+                        <div className="chart-label">{month}</div>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
-              <div className="chart-legend">
-                <span><i className="dot apps"></i>Applications</span>
-                <span><i className="dot active"></i>Activations</span>
+              <div className="chart-legend grouped">
+                <span><i className="dot apps dw"></i>DynamicWorks</span>
+                <span><i className="dot apps ma"></i>MyAffiliate</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Activations by Platform - 6 columns */}
+        <div className="widget chart-widget trends" style={{ gridColumn: 'span 6' }}>
+          <h3>Activations by Platform</h3>
+          {loading ? (
+            <div className="widget-loading">
+              <div className="shimmer-chart"></div>
+            </div>
+          ) : (
+            <div className="area-chart">
+              <div className="chart-area stacked-bar-area">
+                {(() => {
+                  if (!dashboardData?.monthly_trends) return null;
+                  const months = Array.from(new Set(dashboardData.monthly_trends.map(m => m.month)));
+                  // For scaling
+                  const maxActivations = Math.max(...months.map(month => {
+                    const dw = dashboardData.monthly_trends.find(m => m.month === month && m.platform === 'DynamicWorks') || { activations: 0 };
+                    const ma = dashboardData.monthly_trends.find(m => m.month === month && m.platform === 'MyAffiliate') || { activations: 0 };
+                    return dw.activations + ma.activations;
+                  }));
+                  return months.map((month, idx) => {
+                    const dw = dashboardData.monthly_trends.find(m => m.month === month && m.platform === 'DynamicWorks') || { activations: 0 };
+                    const ma = dashboardData.monthly_trends.find(m => m.month === month && m.platform === 'MyAffiliate') || { activations: 0 };
+                    const dwHeight = (dw.activations / maxActivations) * 100;
+                    const maHeight = (ma.activations / maxActivations) * 100;
+                    return (
+                      <div key={month} className="chart-month stacked">
+                        <div className="chart-bar-stack">
+                          <div
+                            className="chart-bar active dw"
+                            style={{ height: `${dwHeight}%`, bottom: `${maHeight}%` }}
+                            title={`DynamicWorks: ${formatNumber(dw.activations)} activations`}
+                          />
+                          <div
+                            className="chart-bar active ma"
+                            style={{ height: `${maHeight}%`, bottom: 0 }}
+                            title={`MyAffiliate: ${formatNumber(ma.activations)} activations`}
+                          />
+                        </div>
+                        <div className="chart-label">{month}</div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+              <div className="chart-legend grouped">
+                <span><i className="dot active dw"></i>DynamicWorks</span>
+                <span><i className="dot active ma"></i>MyAffiliate</span>
               </div>
             </div>
           )}
@@ -2854,11 +3519,59 @@ const SpotlightDashboard = () => {
 
         {/* Add Conversion Funnel Section */}
         <div className="widget funnel-widget">
-          <h3>🔄 Conversion & Activation Funnel</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', position: 'relative' }}>
+            <h3>🔄 Conversion & Activation Funnel</h3>
+            <div className="ai-insight-container" ref={conversionFunnelAI.tooltipRef}>
+              <button 
+                ref={conversionFunnelAI.buttonRef}
+                className="ai-insight-icon"
+                onClick={() => conversionFunnelAI.handleInsightClick(
+                  'Conversion & Activation Funnel',
+                  funnelData || {
+                    funnel_overview: {},
+                    country_performance: [],
+                    title: 'Conversion & Activation Funnel Analysis'
+                  },
+                  'Conversion Funnel'
+                )}
+                title="Get AI insights for this widget"
+              >
+                💡
+              </button>
+              
+              {conversionFunnelAI.showInsight && (
+                <div 
+                  className={`ai-insight-tooltip ${conversionFunnelAI.tooltipPosition.toRight ? 'to-right' : 'to-left'}`}
+                  style={{
+                    left: `${conversionFunnelAI.tooltipPosition.left}px`,
+                    top: `${conversionFunnelAI.tooltipPosition.top}px`
+                  }}
+                >
+                  <div className="ai-insight-tooltip-content">
+                    {conversionFunnelAI.insightLoading ? (
+                      <div className="ai-insight-loading-small">
+                        <div className="loading-spinner-small"></div>
+                        <span>Generating insights...</span>
+                      </div>
+                    ) : (
+                      <div 
+                        className="ai-insight-text-formatted"
+                        dangerouslySetInnerHTML={{ 
+                          __html: formatInsightText(conversionFunnelAI.insightContent) 
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="ai-insight-tooltip-arrow"></div>
+                </div>
+              )}
+            </div>
+          </div>
           <FunnelChart 
             funnelData={dashboardData} 
             selectedCountry={null}
             dateRange={dateRange}
+            onFunnelDataUpdate={setFunnelData}
           />
         </div>
         
@@ -2950,45 +3663,121 @@ const SpotlightDashboard = () => {
           )}
         </div>
 
-        {/* Underperforming Countries - Sorted by activation rate */}
-        <div className="widget table-widget underperforming">
-          <h3>⚠️ Countries Needing Attention</h3>
-          {loading ? (
-            <div className="widget-loading">
-              <div className="shimmer-table"></div>
-            </div>
-          ) : (
-            <table className="performance-table">
-              <thead>
-                <tr>
-                  <th>Country</th>
-                  <th className="text-right">Recent Apps</th>
-                  <th className="text-right">Active</th>
-                  <th className="text-right">Act. Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dashboardData?.underperforming_countries
-                  ?.sort((a, b) => (a.activation_rate || 0) - (b.activation_rate || 0))
-                  .slice(0, 8)
-                  .map((country, idx) => (
-                    <tr key={idx}>
-                      <td className="country-name">{country.country}</td>
-                      <td className="text-right">{formatNumber(country.recent_signups)}</td>
-                      <td className="text-right">{formatNumber(country.active_partners)}</td>
-                      <td className="text-right rate-cell low-rate">
-                        <strong>{country.activation_rate || 0}%</strong>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        {/* Country Analysis Widgets - All visible at once */}
+        <CountryAnalysisWidget 
+          title="⚡ Activation Speed Leaders"
+          description="Countries with fastest partner activation times and highest conversion rates"
+          data={dashboardData?.conversion_funnel
+            ?.filter(country => country.applications >= 20 && parseFloat(country.activation_rate) >= 5)
+            .sort((a, b) => parseFloat(a.avg_days_to_activate || 999) - parseFloat(b.avg_days_to_activate || 999))
+            .slice(0, 6) || []}
+          columns={[
+            { key: 'country', label: 'Country', align: 'left' },
+            { key: 'applications', label: 'Apps', align: 'right', format: 'number' },
+            { key: 'avg_days_to_activate', label: 'Avg Days', align: 'right', format: 'decimal', highlight: 'low' },
+            { key: 'activation_rate', label: 'Rate', align: 'right', format: 'percentage', highlight: 'high' }
+          ]}
+          loading={loading}
+          formatNumber={formatNumber}
+        />
+
+        <CountryAnalysisWidget 
+          title="🔄 Partner Comeback Success"
+          description="Partners who were dormant (stopped earning) but returned to active earning in last 30 days"
+          data={dashboardData?.country_roi
+            ?.filter(country => country.reactivated_30d > 0)
+            .sort((a, b) => parseFloat(b.reactivated_30d) - parseFloat(a.reactivated_30d))
+            .slice(0, 6) || []}
+          columns={[
+            { key: 'country', label: 'Country', align: 'left' },
+            { key: 'reactivated_30d', label: 'Came Back', align: 'right', format: 'number', highlight: 'high' },
+            { key: 'currently_active', label: 'Total Earning Now', align: 'right', format: 'number' },
+            { key: 'new_partners_30d', label: 'Brand New', align: 'right', format: 'number' }
+          ]}
+          loading={loading}
+          formatNumber={formatNumber}
+        />
+
+        <CountryAnalysisWidget 
+          title="🚀 High-Volume Opportunities"
+          description="Countries with significant application volume but untapped activation potential"
+          data={dashboardData?.underperforming_countries
+            ?.filter(country => country.total_applications >= 100)
+            .sort((a, b) => (b.total_applications * (20 - parseFloat(b.activation_rate))) - (a.total_applications * (20 - parseFloat(a.activation_rate))))
+            .slice(0, 6) || []}
+          columns={[
+            { key: 'country', label: 'Country', align: 'left' },
+            { key: 'total_applications', label: 'Apps', align: 'right', format: 'number' },
+            { key: 'activated_partners', label: 'Activated', align: 'right', format: 'number' },
+            { key: 'activation_rate', label: 'Rate', align: 'right', format: 'percentage', highlight: 'opportunity' }
+          ]}
+          loading={loading}
+          formatNumber={formatNumber}
+        />
+
+        <CountryAnalysisWidget 
+          title="📈 Growth Momentum Leaders"
+          description="Countries showing strongest month-over-month partner acquisition growth"
+          data={dashboardData?.top_growing_countries
+            ?.filter(country => parseFloat(country.growth_rate) > 100 && country.current_signups >= 10)
+            .sort((a, b) => parseFloat(b.growth_rate) - parseFloat(a.growth_rate))
+            .slice(0, 6) || []}
+          columns={[
+            { key: 'country', label: 'Country', align: 'left' },
+            { key: 'previous_signups', label: '31-60d ago', align: 'right', format: 'number' },
+            { key: 'current_signups', label: 'Last 30d', align: 'right', format: 'number' },
+            { key: 'growth_rate', label: 'Growth', align: 'right', format: 'percentage', highlight: 'high' }
+          ]}
+          loading={loading}
+          formatNumber={formatNumber}
+        />
 
         {/* Country ROI Heatmap - Improved for better readability */}
         <div className="widget heatmap-widget">
-          <h3>Country ROI Analysis - Top 12</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', position: 'relative' }}>
+            <h3>Country ROI Analysis</h3>
+            <div className="ai-insight-container" ref={countryROIAI.tooltipRef}>
+              <button 
+                ref={countryROIAI.buttonRef}
+                className="ai-insight-icon"
+                onClick={() => countryROIAI.handleInsightClick(
+                  'Country ROI Analysis',
+                  dashboardData?.country_roi || [],
+                  'Country ROI Analysis'
+                )}
+                title="Get AI insights for this widget"
+              >
+                💡
+              </button>
+              
+              {countryROIAI.showInsight && (
+                <div 
+                  className={`ai-insight-tooltip ${countryROIAI.tooltipPosition.toRight ? 'to-right' : 'to-left'}`}
+                  style={{
+                    left: `${countryROIAI.tooltipPosition.left}px`,
+                    top: `${countryROIAI.tooltipPosition.top}px`
+                  }}
+                >
+                  <div className="ai-insight-tooltip-content">
+                    {countryROIAI.insightLoading ? (
+                      <div className="ai-insight-loading-small">
+                        <div className="loading-spinner-small"></div>
+                        <span>Generating insights...</span>
+                      </div>
+                    ) : (
+                      <div 
+                        className="ai-insight-text-formatted"
+                        dangerouslySetInnerHTML={{ 
+                          __html: formatInsightText(countryROIAI.insightContent) 
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="ai-insight-tooltip-arrow"></div>
+                </div>
+              )}
+            </div>
+          </div>
           {loading ? (
             <div className="widget-loading">
               <div className="shimmer-table"></div>
@@ -3036,7 +3825,50 @@ const SpotlightDashboard = () => {
 
         {/* Retention Cohorts */}
         <div className="widget cohort-widget">
-          <h3>Partner Retention Cohorts</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', position: 'relative' }}>
+            <h3>Partner Retention Cohorts</h3>
+            <div className="ai-insight-container" ref={retentionCohortsAI.tooltipRef}>
+              <button 
+                ref={retentionCohortsAI.buttonRef}
+                className="ai-insight-icon"
+                onClick={() => retentionCohortsAI.handleInsightClick(
+                  'Partner Retention Cohorts',
+                  dashboardData?.retention_cohorts || [],
+                  'Partner Retention Cohorts'
+                )}
+                title="Get AI insights for this widget"
+              >
+                💡
+              </button>
+              
+              {retentionCohortsAI.showInsight && (
+                <div 
+                  className={`ai-insight-tooltip ${retentionCohortsAI.tooltipPosition.toRight ? 'to-right' : 'to-left'}`}
+                  style={{
+                    left: `${retentionCohortsAI.tooltipPosition.left}px`,
+                    top: `${retentionCohortsAI.tooltipPosition.top}px`
+                  }}
+                >
+                  <div className="ai-insight-tooltip-content">
+                    {retentionCohortsAI.insightLoading ? (
+                      <div className="ai-insight-loading-small">
+                        <div className="loading-spinner-small"></div>
+                        <span>Generating insights...</span>
+                      </div>
+                    ) : (
+                      <div 
+                        className="ai-insight-text-formatted"
+                        dangerouslySetInnerHTML={{ 
+                          __html: formatInsightText(retentionCohortsAI.insightContent) 
+                        }}
+                      />
+                    )}
+                  </div>
+                  <div className="ai-insight-tooltip-arrow"></div>
+                </div>
+              )}
+            </div>
+          </div>
           {loading ? (
             <div className="widget-loading">
               <div className="shimmer-grid"></div>
@@ -3073,34 +3905,71 @@ const SpotlightDashboard = () => {
           )}
         </div>
         
-        {/* AI Insights */}
-        {dashboardData?.ai_insights && (
-          <div className="widget insights-widget">
-            <h3>🤖 Key Insights & Recommendations</h3>
-            {loading ? (
-              <div className="widget-loading">
-                <div className="shimmer-text"></div>
-              </div>
-            ) : (
-              <div className="ai-insights-grid">
-                {Array.isArray(dashboardData.ai_insights) ? (
-                  dashboardData.ai_insights.map((insight, idx) => (
-                    <div key={idx} className="insight-card">
-                      <h4>{insight.title}</h4>
-                      <p className="insight-text">{insight.insight}</p>
-                      <div className="recommendation">
-                        <strong>Action:</strong> {insight.recommendation}
-                      </div>
+        {/* AI Insights - Always visible */}
+        <div className="widget insights-widget">
+          <h3>🤖 Key Insights & Recommendations</h3>
+          {loading ? (
+            <div className="widget-loading">
+              <div className="shimmer-text"></div>
+            </div>
+          ) : (
+            <div className="ai-insights-grid">
+              {Array.isArray(dashboardData?.ai_insights) ? (
+                dashboardData.ai_insights.map((insight, idx) => (
+                  <div key={idx} className="insight-card">
+                    <h4>{insight.title}</h4>
+                    <div 
+                      className="ai-summary-text"
+                      dangerouslySetInnerHTML={{ 
+                        __html: formatSummaryInsights(insight.insight) 
+                      }}
+                    />
+                    <div className="recommendation">
+                      <strong>Action:</strong> {insight.recommendation}
                     </div>
-                  ))
-                ) : (
-                  <p className="ai-content">{dashboardData.ai_insights}</p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                  </div>
+                ))
+              ) : dashboardData?.ai_insights ? (
+                <div className="ai-content">
+                  <div 
+                    className="ai-summary-text"
+                    dangerouslySetInnerHTML={{ 
+                      __html: formatSummaryInsights(dashboardData.ai_insights) 
+                    }}
+                  />
+                </div>
+              ) : (
+                <div className="ai-insights-grid">
+                  <div className="insight-card">
+                    <h4>🤖 AI Insights Status</h4>
+                    <p className="insight-text">
+                      {dashboardData?.ai_insights && typeof dashboardData.ai_insights === 'string' && dashboardData.ai_insights.includes('authentication') ? (
+                        <>
+                          • <span style={{color: '#dc2626'}}>API authentication error detected</span><br/>
+                          • Please check your LiteLLM proxy configuration and API key<br/>
+                          • Contact your system administrator to resolve API access issues<br/>
+                          • The dashboard will continue to work with standard analytics<br/>
+                          • Refresh the page after fixing authentication to get AI-powered insights
+                        </>
+                      ) : (
+                        <>
+                          • AI insights are being generated based on your current dashboard data<br/>
+                          • This analysis will provide personalized recommendations for your partner portfolio<br/>
+                          • Insights will cover event effectiveness, conversion optimization, and growth opportunities<br/>
+                          • Please check your API configuration if insights don't appear<br/>
+                          • Refresh the dashboard to retry AI analysis generation
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+
     </div>
   );
 };

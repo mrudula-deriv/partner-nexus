@@ -16,6 +16,7 @@ import json
 from psycopg2.extras import RealDictCursor
 from collections import OrderedDict
 import datetime
+import os
 
 # Import screener functions
 from screener import (
@@ -1011,6 +1012,320 @@ def get_funnel_metrics_endpoint():
             'error': str(e)
         }), 500
 
+@app.route('/ai-insight', methods=['POST'])
+def get_ai_insight():
+    """Generate AI insights for widget data"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                "error": "Request body is required"
+            }), 400
+        
+        widget_type = data.get('widget_type', '')
+        widget_data = data.get('data', [])
+        title = data.get('title', '')
+        
+        logger.info(f"Generating AI insight for widget: {title}")
+        
+        # Generate contextual insights based on widget type and data
+        insight = generate_widget_insight(widget_type, widget_data, title)
+        
+        return jsonify({
+            'success': True,
+            'insight': insight
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating AI insight: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'insight': 'Unable to generate insights at this time. Please try again later.'
+        }), 500
+
+def generate_widget_insight(widget_type, data, title):
+    """Generate contextual insights based on widget data using LLM"""
+    
+    if not data or len(data) == 0:
+        return "• No data available for analysis. Consider expanding your date range or checking data filters."
+    
+    # Try to use LLM for insights if available
+    try:
+        import os
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import SystemMessage, HumanMessage
+        
+        OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+        API_BASE_URL = os.getenv('API_BASE_URL')
+        OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME')
+        
+        if OPENAI_API_KEY and API_BASE_URL and OPENAI_MODEL_NAME:
+            llm = ChatOpenAI(
+                api_key=OPENAI_API_KEY,
+                base_url=API_BASE_URL,
+                model=OPENAI_MODEL_NAME,
+                temperature=0.7
+            )
+            
+            # Prepare data summary based on data structure
+            if isinstance(data, dict):
+                # Handle dictionary data structure (like conversion funnel)
+                data_summary = f"""
+                Widget: {title}
+                Data Structure: Dictionary with {len(data)} keys
+                Keys: {list(data.keys())}
+                
+                Key Metrics:
+                """
+                
+                # Add funnel overview metrics if available
+                if 'funnel_overview' in data:
+                    funnel_overview = data['funnel_overview']
+                    for key, value in funnel_overview.items():
+                        data_summary += f"- {key}: {value}\n"
+                
+                # Add country performance data if available
+                if 'country_performance' in data:
+                    country_data = data['country_performance']
+                    data_summary += f"- Country performance data: {len(country_data)} countries\n"
+                    if country_data:
+                        data_summary += f"- Sample country data: {country_data[:2]}\n"
+                
+                # Add legacy support for overview_metrics
+                if 'overview_metrics' in data:
+                    overview = data['overview_metrics']
+                    for key, value in overview.items():
+                        data_summary += f"- {key}: {value}\n"
+                
+                # Add legacy support for conversion_funnel
+                if 'conversion_funnel' in data:
+                    funnel_data = data['conversion_funnel']
+                    data_summary += f"- Conversion funnel countries: {len(funnel_data)}\n"
+                    if funnel_data:
+                        data_summary += f"- Sample funnel data: {funnel_data[:2]}\n"
+            else:
+                # Handle list/array data structure
+                data_summary = f"""
+                Widget: {title}
+                Data Points: {len(data) if data else 0}
+                Sample Data: {data[:3] if data and len(data) > 3 else data}
+                
+                Key Metrics:
+                """
+                
+                # Add specific metrics based on data structure
+                if data and isinstance(data[0], dict):
+                    for key in data[0].keys():
+                        if any(metric in key.lower() for metric in ['rate', 'count', 'total', 'growth', 'days']):
+                            values = [item.get(key, 0) for item in data[:5]]
+                            data_summary += f"- {key}: {values}\n"
+            
+            messages = [
+                SystemMessage(content="""You are a partner analytics expert. Analyze the widget data and provide exactly 5-6 bullet points (1-2 sentences each).
+                
+                Format your response as bullet points starting with •
+                Focus on:
+                - Key insights from the data
+                - Performance patterns
+                - Actionable recommendations
+                - Strategic implications
+                
+                Be specific and data-driven. Keep each bullet concise."""),
+                HumanMessage(content=f"Analyze this widget data and provide insights:\n\n{data_summary}")
+            ]
+            
+            response = llm.invoke(messages)
+            return response.content
+            
+    except Exception as e:
+        logger.error(f"Error generating LLM insights: {str(e)}")
+        # Provide informative error message for authentication issues
+        if "401" in str(e) or "Authentication" in str(e):
+            return "• API authentication error - please check your LiteLLM proxy configuration and API key.\n• Widget insights are temporarily using fallback analysis.\n• Contact your system administrator to resolve API access issues.\n• Refresh the page after fixing authentication to get AI-powered insights.\n• The dashboard will continue to work with standard analytics."
+        # Fall back to rule-based insights if LLM fails
+        pass
+    
+    # Activation Speed Leaders insights
+    if "Activation Speed Leaders" in title:
+        top_country = data[0] if data else None
+        if top_country:
+            avg_days = top_country.get('avg_days_to_activate', 0)
+            rate = top_country.get('activation_rate', 0)
+            country = top_country.get('country', 'Unknown')
+            
+            insights = [
+                f"• {country} leads with {avg_days} days average activation time and {rate}% conversion rate.",
+                f"• {len(data)} countries show strong activation potential for focused investment.",
+                "• Fast activation indicates effective onboarding processes and partner readiness.",
+                "• Consider replicating top performers' strategies across other markets.",
+                "• Automated follow-ups could further reduce activation timeframes.",
+                "• Focus resources on proven markets for maximum ROI potential."
+            ]
+            
+            return "\n".join(insights)
+    
+    # Partner Comeback Success insights
+    elif "Partner Comeback Success" in title or "Comeback" in title:
+        total_reactivated = sum(item.get('reactivated_30d', 0) for item in data)
+        top_country = data[0] if data else None
+        
+        insights = [
+            f"• {total_reactivated} partners successfully returned to earning status across {len(data)} countries.",
+            f"• {top_country.get('country', 'Unknown')} leads with {top_country.get('reactivated_30d', 0)} reactivated partners." if top_country else "• No clear leader in partner reactivation.",
+            "• High reactivation numbers indicate good market conditions and partner satisfaction.",
+            "• Analyze what triggered these comebacks to create systematic re-engagement campaigns.",
+            "• Focus on preventing churn rather than just reactivating dormant partners.",
+            "• Implement automated win-back sequences for better retention results."
+        ]
+        
+        return "\n".join(insights)
+    
+    # High-Volume Opportunities insights
+    elif "High-Volume Opportunities" in title or "Volume" in title:
+        total_apps = sum(item.get('total_applications', 0) for item in data)
+        avg_rate = sum(float(item.get('activation_rate', 0)) for item in data) / len(data) if data else 0
+        top_opportunity = data[0] if data else None
+        
+        insights = [
+            f"• {total_apps:,} total applications with {avg_rate:.1f}% average activation rate across high-volume markets.",
+            f"• {top_opportunity.get('country', 'Unknown')} shows biggest opportunity with {top_opportunity.get('total_applications', 0):,} applications." if top_opportunity else "• No clear high-volume opportunity identified.",
+            "• Low activation rates indicate systemic onboarding issues that need addressing.",
+            "• Audit onboarding flows for friction points and implement progressive training.",
+            "• Add dedicated support resources for high-volume markets.",
+            "• A/B test improved onboarding flows to push rates above 15% target."
+        ]
+        
+        return "\n".join(insights)
+    
+    # Growth Momentum Leaders insights
+    elif "Growth Momentum" in title or "Growth" in title:
+        avg_growth = sum(float(item.get('growth_rate', 0)) for item in data) / len(data) if data else 0
+        top_grower = data[0] if data else None
+        
+        insights = [
+            f"• Average {avg_growth:.0f}% growth across {len(data)} momentum markets shows strong expansion.",
+            f"• {top_grower.get('country', 'Unknown')} leads with {top_grower.get('growth_rate', 0)}% growth and {top_grower.get('current_signups', 0)} recent signups." if top_grower else "• No clear growth leader identified.",
+            "• Exceptional growth requires increased resource allocation and support infrastructure.",
+            "• Monitor quality metrics to ensure growth doesn't compromise partner experience.",
+            "• Study growth drivers and replicate successful strategies in other markets.",
+            "• Growth markets need different support than mature markets - prioritize scalability."
+        ]
+        
+        return "\n".join(insights)
+    
+    # Event Effectiveness insights
+    elif "Event Effectiveness" in title or "Event" in title:
+        total_attended = sum(item.get('attended_count', 0) for item in data)
+        avg_rate = sum(float(item.get('activation_rate', 0)) for item in data) / len(data) if data else 0
+        
+        insights = [
+            f"• {total_attended:,} partners attended onboarding events with {avg_rate:.1f}% average activation rate.",
+            f"• {data[0].get('country', 'Unknown')} shows best event performance with {data[0].get('activation_rate', 0)}% rate." if data else "• No clear event leader identified.",
+            "• High event attendance correlates with better partner activation and retention.",
+            "• Consider expanding successful event formats to underperforming markets.",
+            "• Track long-term retention rates for event attendees vs non-attendees.",
+            "• Implement virtual event options to reach more partners cost-effectively."
+        ]
+        return "\n".join(insights)
+    
+    # Conversion Funnel insights
+    elif "Conversion" in title and "Funnel" in title:
+        # Handle funnel data structure from /spotlight/funnel-metrics endpoint
+        if isinstance(data, dict) and 'funnel_overview' in data:
+            funnel_overview = data.get('funnel_overview', {})
+            country_performance = data.get('country_performance', [])
+            
+            activation_rate = funnel_overview.get('activation_rate', 0)
+            total_apps = funnel_overview.get('total_applications', 0)
+            signup_activations = funnel_overview.get('signup_activations', 0)
+            avg_days = funnel_overview.get('avg_days_to_activation', 0)
+            active_partners_rate = funnel_overview.get('active_partners_rate', 0)
+            application_growth = funnel_overview.get('application_growth_rate', 0)
+            
+            insights = [
+                f"• Overall activation rate of {activation_rate:.1f}% with {signup_activations:,} partners activated from {total_apps:,} total applications.",
+                f"• Average time to first activation is {avg_days:.1f} days, indicating partner onboarding efficiency.",
+                f"• {active_partners_rate:.1f}% of partners are currently active in the last 30 days, showing ongoing engagement.",
+                f"• Application growth rate of {application_growth:+.1f}% vs previous period shows market momentum.",
+                f"• {len(country_performance)} countries analyzed for stage-by-stage conversion performance optimization.",
+                "• Focus on improving conversion rates at each funnel stage to maximize overall activation performance."
+            ]
+            
+            return "\n".join(insights)
+        else:
+            # Fallback for simple data structure
+            insights = [
+                f"• {len(data) if isinstance(data, list) else 'Multiple'} conversion stages analyzed showing partner journey progression.",
+                "• Identify biggest drop-off points to focus optimization efforts effectively.",
+                "• Each stage improvement compounds to significantly boost overall conversion.",
+                "• Implement targeted interventions at the weakest conversion points.",
+                "• Monitor stage-specific metrics to track improvement over time.",
+                "• Consider A/B testing different approaches at each conversion stage."
+            ]
+            return "\n".join(insights)
+    
+    # Top Performing Countries insights
+    elif "Top Performing" in title or "Country" in title:
+        insights = [
+            f"• {len(data)} countries analyzed for performance benchmarking and optimization.",
+            f"• {data[0].get('country', 'Unknown')} leads performance metrics in this analysis." if data else "• No clear country leader identified.",
+            "• Top performers can serve as models for scaling successful strategies.",
+            "• Analyze what makes leaders successful and replicate across other markets.",
+            "• Consider increased investment in consistently high-performing markets.",
+            "• Use underperforming markets as test grounds for new improvement strategies."
+        ]
+        return "\n".join(insights)
+    
+    # Top Activation Opportunities insights
+    elif "Activation Opportunities" in title or "Opportunities" in title:
+        insights = [
+            f"• {len(data)} activation opportunities identified across partner portfolio.",
+            "• Focus on high-potential, low-activation markets for maximum impact.",
+            "• Quick wins available through improved onboarding and support processes.",
+            "• Systematic approach to opportunity capture will drive significant growth.",
+            "• Monitor conversion improvements to validate optimization efforts.",
+            "• Scale successful activation strategies across similar market segments."
+        ]
+        return "\n".join(insights)
+    
+    # Country ROI Analysis insights
+    elif "Country ROI" in title or "ROI Analysis" in title:
+        insights = [
+            f"• {len(data)} countries analyzed for return on investment performance.",
+            "• High ROI markets deserve increased resource allocation and support.",
+            "• Low ROI markets need strategic intervention or resource reallocation.",
+            "• Track ROI trends over time to identify improving or declining markets.",
+            "• Consider market maturity when evaluating ROI performance.",
+            "• Balance short-term ROI with long-term market development potential."
+        ]
+        return "\n".join(insights)
+    
+    # Partner Retention Cohorts insights
+    elif "Partner Retention" in title or "Cohorts" in title or "Retention" in title:
+        insights = [
+            f"• {len(data)} partner cohorts analyzed for retention patterns and trends.",
+            "• Early retention indicators predict long-term partner success and value.",
+            "• Identify at-risk cohorts early to implement targeted retention strategies.",
+            "• Strong retention cohorts indicate effective onboarding and support processes.",
+            "• Monitor cohort performance over time to validate retention improvements.",
+            "• Use cohort insights to optimize partner lifecycle management strategies."
+        ]
+        return "\n".join(insights)
+    
+    # Generic insights for other widgets
+    else:
+        insights = [
+            f"• {len(data)} data points analyzed for {title} performance insights.",
+            "• Focus on top-performing entries to identify success factors for replication.",
+            "• Look for patterns and trends that indicate optimization opportunities.",
+            "• Consider market context when interpreting performance variations.",
+            "• Implement systematic tracking to monitor improvement over time.",
+            "• Use insights to guide strategic resource allocation and planning decisions."
+        ]
+        return "\n".join(insights)
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({"error": "Endpoint not found"}), 404
@@ -1034,7 +1349,8 @@ if __name__ == '__main__':
     print("  • POST /live-screeners/screener4 - Get data for Live Screener 4")
     print("  • GET  /spotlight/dashboard - Get complete spotlight dashboard")
     print("  • GET  /spotlight/funnel-metrics - Get conversion funnel metrics")
-    print("\n🌐 API will be available at: http://localhost:5000")
+    print("  • POST /ai-insight - Generate AI insights for widget data")
+    print("\n🌐 API will be available at: http://localhost:5001")
     print("📝 Make sure to start the React frontend on http://localhost:3000")
     
-    app.run(debug=True, host='0.0.0.0', port=5000) 
+    app.run(debug=True, host='0.0.0.0', port=5001) 
