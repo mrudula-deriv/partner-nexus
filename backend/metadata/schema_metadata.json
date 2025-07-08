@@ -11845,7 +11845,7 @@
             {
                 "data_type": "text",
                 "column_name": "activation_phase",
-                "description": "Partner's client activation rate category",
+                "description": "Partner's client activation rate category: 'Extended Activation', 'Limited Activation', 'Sluggish Activation', 'Swift Activation'",
                 "is_nullable": "YES",
                 "is_primary_key": false
             }
