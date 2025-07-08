@@ -2,6 +2,8 @@ import psycopg2
 from dotenv import load_dotenv
 import os
 import json
+import sqlglot
+from sqlglot.errors import ParseError
 from psycopg2.extras import RealDictCursor
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -10,13 +12,16 @@ from typing import TypedDict, Annotated, Sequence
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
+from langchain.vectorstores import FAISS
+from langchain.embeddings import OpenAIEmbeddings
 import logging
 from logging.handlers import RotatingFileHandler
 import datetime
+from supabase import create_client, Client
 
 # Create logs directory if it doesn't exist
 if not os.path.exists('logs'):
-    os.makedirs('logs')
+    os.makedirs('logs') 
 
 # Set up logging configuration
 def setup_logger():
@@ -66,24 +71,50 @@ conn = psycopg2.connect(**db_params)
 cursor = conn.cursor(cursor_factory=RealDictCursor)
 
 
+# Supabase configuration
+SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')
+SUPABASE_URL = os.getenv('SUPABASE_URL')
+SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+
+supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+def get_llm(model=OPENAI_MODEL_NAME, temperature=0) -> ChatOpenAI:
+    config = {"model_name": model, "temperature": temperature}
+    if API_BASE_URL:
+        config["base_url"] = API_BASE_URL
+    return ChatOpenAI(**config)
+
 def get_multi_schema_metadata(schemas: list[str]):
-    query = """
-    SELECT table_schema, table_name, column_name, data_type
-    FROM information_schema.columns
-    WHERE table_schema = ANY(%s)
-    ORDER BY table_schema, table_name, ordinal_position;
     """
-    cursor.execute(query, (schemas,))
-    rows = cursor.fetchall()
+    Fetches metadata for the given schemas by calling the Supabase RPC function,
+    formats it, and saves it to a JSON file.
+    """
+    logger.info("Fetching metadata for schemas: %s", schemas)
+    response = supabase_client.rpc("get_schema_metadata", {"p_schema_names_json": schemas}).execute()
+
+    rows = response.data
+    if not rows:
+        logger.warning("Metadata fetch returned no data.")
+        rows = []
+
+    logger.info("Successfully retrieved metadata.")
 
     schema_dict = {}
-    for row in rows:
-        schema = row['table_schema']
-        table = row['table_name']
+    for table_data in rows:
+        schema = table_data.get('table_schema')
+        table = table_data.get('table_name')
+        if not schema or not table:
+            continue
+            
         key = f"{schema}.{table}"
-        if key not in schema_dict:
-            schema_dict[key] = []
-        schema_dict[key].append((row['column_name'], row['data_type']))
+        schema_dict[key] = {
+            "columns": table_data.get('columns', []),
+            "relationships": [],  # Initialize empty relationships list
+            "description": table_data.get('table_description')
+        }
+    
+    # Infer and add relationships directly to the schema metadata
+    schema_dict_with_relationships = infer_table_relationships(schema_dict)
     
     # Create a directory for storing metadata if it doesn't exist
     if not os.path.exists('metadata'):
@@ -92,7 +123,7 @@ def get_multi_schema_metadata(schemas: list[str]):
     # Write schema data to JSON file
     json_file_path = 'metadata/schema_metadata.json'
     with open(json_file_path, 'w') as f:
-        json.dump(schema_dict, f, indent=4)
+        json.dump(schema_dict_with_relationships, f, indent=4)
     
     return json_file_path
 
@@ -106,11 +137,114 @@ def read_schema_metadata():
         schema_dict = json.load(f)
     return schema_dict
 
+def infer_table_relationships(schema_dict: dict):
+    """
+    Infers table relationships from the schema based on naming conventions.
+    Adds the inferred relationships directly to the schema_dict and returns it.
+    Also saves the relationships to a separate JSON file for backward compatibility.
+    """
+    logger.info("Inferring table relationships from schema...")
+    
+    primary_keys = {}
+    for table_name, table_data in schema_dict.items():
+        for column in table_data['columns']:
+            if column.get('is_primary_key'):
+                # Store as {column_name: table_name} for easy lookup
+                pk_col_name = column.get('column_name')
+                if pk_col_name:
+                    primary_keys[pk_col_name] = table_name
+
+    # Create a copy of schema_dict to modify
+    updated_schema_dict = schema_dict.copy()
+    relationships_dict = {}  # For backward compatibility
+    
+    for table_name, table_data in schema_dict.items():
+        relations = []
+        for column in table_data['columns']:
+            col_name = column.get('column_name')
+            if not col_name or column.get('is_primary_key'):
+                continue
+
+            # Heuristic 1: column name is a primary key in another table
+            if col_name in primary_keys and primary_keys[col_name] != table_name:
+                relation = {
+                    'foreign_key_column': col_name,
+                    'references_table': primary_keys[col_name],
+                    'references_column': col_name,
+                    'constraint_name': f"inferred_fk_{table_name.replace('.', '_')}_{col_name}"
+                }
+                relations.append(relation)
+                continue
+            
+            # Heuristic 2: column name of the form `..._id` or `..._pk`
+            if col_name.endswith(('_id', '_pk')):
+                # Try to find a table that matches the prefix
+                prefix = col_name.rsplit('_', 1)[0]
+                # Look for tables named `prefix` or `prefix` + 's' (plural)
+                for pk_name, pk_table_name in primary_keys.items():
+                    pk_table_base_name = pk_table_name.split('.')[-1]
+                    if pk_table_base_name == prefix or pk_table_base_name == prefix + 's':
+                        relation = {
+                            'foreign_key_column': col_name,
+                            'references_table': pk_table_name,
+                            'references_column': pk_name,
+                            'constraint_name': f"inferred_fk_{table_name.replace('.', '_')}_{col_name}"
+                        }
+                        relations.append(relation)
+
+        # Add relationships to the schema metadata
+        if relations:
+            updated_schema_dict[table_name]['relationships'] = relations
+            relationships_dict[table_name] = relations  # For backward compatibility
+
+    logger.info("Successfully inferred relationships.")
+    
+    return updated_schema_dict
+
 # Get schema metadata
 schema_dict = read_schema_metadata()
-table_info = "\n".join(
-    [f"{table}: {', '.join([f'{col} ({dtype})' for col, dtype in cols])}" for table, cols in schema_dict.items()]
+
+def schema_dict_to_chunks(schema_dict):
+    chunks = []
+    for table, meta in schema_dict.items():
+        columns = meta.get("columns", [])
+        relationships = meta.get("relationships", [])
+        desc = meta.get("description", "")
+        column_text = "\n".join(
+            f"- {col['column_name']} ({col['data_type']})"
+            for col in columns
+        )
+        rel_text = "\n".join(
+            f"- {r['foreign_key_column']} → {r['references_table']}.{r['references_column']}"
+            for r in relationships
+        )
+        chunk = f"""
+        Table: {table}
+        Description: {desc}
+        Columns:
+        {column_text}
+        Relationships:
+        {rel_text}
+        """
+        chunks.append(chunk.strip())
+    return chunks
+
+
+embedding = OpenAIEmbeddings(
+    openai_api_key=OPENAI_API_KEY,  # not used by LiteLLM but required
+    openai_api_base=API_BASE_URL,  # Your LiteLLM proxy
+    model="text-embedding-ada-002"
 )
+
+schema_chunks = schema_dict_to_chunks(read_schema_metadata())
+vectorstore = FAISS.from_texts(schema_chunks, embedding=embedding)
+vectorstore.save_local("metadata/schema_vectorstore")
+
+retriever = FAISS.load_local("metadata/schema_vectorstore", embedding, allow_dangerous_deserialization=True)
+
+def retrieve_context(user_query: str) -> str:
+    docs = retriever.similarity_search(user_query, k=7)
+    return "\n\n".join([doc.page_content for doc in docs])
 
 # Define the state type
 class AgentState(TypedDict):
@@ -118,9 +252,16 @@ class AgentState(TypedDict):
     sql_query: str
     verification_result: str
     matches_intent: bool
+    improved_prompt: str
+    error_message: str
     results: str
     error: str
     attempt: int
+    table_info: str
+
+def get_table_info(prompt: str) -> str:
+    table_info = retrieve_context(prompt)
+    return table_info
 
 def clean_sql_query(sql_text: str) -> str:
     """Clean SQL query by removing markdown formatting and extra whitespace."""
@@ -145,21 +286,44 @@ def generate_sql_node(state: AgentState) -> AgentState:
     """Generate SQL query from natural language input."""
     logger.info("\n=== Generating SQL Query ===")
     logger.info(f"Input prompt: {state['prompt']}")
+
+    table_info = retrieve_context(state["prompt"])
     
     # Configure ChatOpenAI with environment variables
-    llm_config = {
-        'temperature': 0, 
-        'model_name': OPENAI_MODEL_NAME
-    }
-    if API_BASE_URL:
-        llm_config['base_url'] = API_BASE_URL
+    llm = get_llm()
     
-    llm = ChatOpenAI(**llm_config)
-    
-    system_prompt = f"""You are a master SQL query generator specialized in Business Intelligence and KPI reporting. You are experienced in generating SQL queries for complex business requirements. You understand the business requirements and can generate the correct and constrained SQL query.
+    system_prompt = f"""YYou are an expert PostgreSQL query generator that creates accurate SQL queries based on natural language questions and database metadata. You will analyze user questions and generate appropriate PostgreSQL queries using the provided database schema information.
 
- Available Schema:
-   {table_info}
+Here is the comprehensive database metadata from Supabase: {schema_chunks}
+
+Your task is to:
+
+- Analyze the user's question to understand their intent and requirements
+- Examine the metadata to identify the relevant schemas, tables, and columns
+- Generate an appropriate PostgreSQL query that answers the question accurately
+
+Important guidelines:
+
+- Use proper PostgreSQL syntax and features
+- Include appropriate JOINs when data spans multiple tables
+- Use CTEs (Common Table Expressions) for complex queries when helpful
+- Apply window functions for analytical queries when appropriate
+- Use proper aggregation functions (SUM, COUNT, AVG, etc.) when needed
+- Include appropriate WHERE clauses for filtering
+- Use LIMIT/OFFSET for pagination when relevant
+- Handle NULL values appropriately
+- Use proper data types and casting when necessary
+- Include ORDER BY clauses when sorting is implied or beneficial
+- Use subqueries when they improve readability or performance
+- Apply proper grouping with GROUP BY when using aggregation functions
+
+Schema considerations:
+
+- Pay attention to table relationships and foreign keys
+- Use the correct schema names if multiple schemas exist
+- Ensure column names and table names match exactly with the metadata
+- Consider indexes that might affect query performance
+- Use appropriate table aliases for readability
 
 Strictly return ONLY the SQL query, DO NOT include any other text, markdown or other formatting. The query should be complete and executable."""
     
@@ -175,144 +339,135 @@ Strictly return ONLY the SQL query, DO NOT include any other text, markdown or o
     logger.info(f"Generated SQL (cleaned):\n{cleaned_sql}")
     return {"sql_query": cleaned_sql}
 
+def validate_sql_node(state: AgentState) -> AgentState:
+    """Validate the SQL query."""
+    logger.info("\n=== Validating SQL Query ===")
+    logger.info(f"SQL to validate:\n{state['sql_query']}")
+
+    try:
+        explain = supabase_client.rpc("run_raw_sql", {"raw_sql": state["sql_query"]}).execute()
+        result_data = getattr(explain, "data", None)
+
+        if result_data:
+            logger.info("Validation response received:")
+            logger.info(result_data)
+
+            # Detect if result_data contains an error string
+            if result_data.find("cost") == -1:
+
+                return {
+                    "syntax_validation_passed": False,
+                    "error_message": result_data,
+                }
+
+            # Otherwise, assume it's valid EXPLAIN output
+            return {
+                "syntax_validation_passed": True,
+                "explain_output": result_data,
+            }
+
+        else:
+            logger.warning("Validation returned empty data.")
+            return {
+                "syntax_validation_passed": False,
+                "error_message": "No output returned from Supabase RPC.",
+            }
+
+    except Exception as e:
+        logger.error(f"Unexpected error during SQL validation: {str(e)}")
+        return {
+            "syntax_validation_passed": False,
+            "error_message": str(e),
+        }
 def verify_intent_node(state: AgentState) -> AgentState:
     """Verify if the SQL query matches the original intent."""
     logger.info("\n=== Verifying SQL Intent ===")
     logger.info(f"SQL to verify:\n{state['sql_query']}")
     
     # Configure ChatOpenAI with environment variables
-    llm_config = {
-        'temperature': 0, 
-        'model_name': OPENAI_MODEL_NAME
-    }
-    if API_BASE_URL:
-        llm_config['base_url'] = API_BASE_URL
+    llm = get_llm()
     
-    llm = ChatOpenAI(**llm_config)
-    
-    system_prompt = f"""You are a SQL query interpreter and validator. Your task is to:
-    1. Translate the SQL query into natural language
-    2. Compare it with the original question and make sure the meaning is exactly the same
-    3. SHOULD check if the query returns exactly what is asked for in the original question
-    4. Verify the query against the available schema
-    5. Check for potential issues in:
-       - Table and column selection
-       - Data type compatibility
-       - Join conditions
-       - Aggregation methods
-       - Time period handling
-       - Business logic interpretation
-       - SQL syntax issues like ambiguous column references
-    
-    Available Schema:
-    {table_info}
-    
-    CRITICAL: If there are ANY SQL syntax issues (like ambiguous column references, missing table aliases, etc.), 
-    you MUST mark INTENT MATCH as False so the query gets corrected.
-    
-    Format your response as:
-    SQL MEANING: [natural language translation of the SQL]
-    INTENT MATCH: [True/False - False if there are ANY syntax issues or schema problems]
-    SCHEMA VERIFICATION: [List any schema-related issues including syntax problems]
-    BUSINESS LOGIC: [Check if the query correctly implements the business requirements]
-    SUGGESTIONS: [Specific improvements if needed]"""
-    
-    user_prompt = f"""Original Question: {state["prompt"]}
+    system_prompt = f"""You are a PostgreSQL query validator. our task is to verify that a generated SQL query correctly matches the business intent expressed in the original natural language prompt.
+    Here is the original natural language prompt that describes the business intent: {state["prompt"]}
+    Your validation process should follow these steps:
 
-SQL Query: {state["sql_query"]}
+    Translate SQL to Natural Language: 
+    First, interpret the generated SQL query and translate it back into clear, natural language that describes exactly what the query does.
+    Compare Intent: Compare your natural language translation of the SQL query against the original prompt
 
-Please analyze if the SQL query:
-1. Correctly captures the intent of the original question
-2. Uses the appropriate tables and columns from the schema
-3. Implements the business logic correctly
-4. Handles time periods and aggregations appropriately
-5. Has NO SQL syntax issues (like ambiguous column references)"""
+    Focus entirely on verifying whether the logic, filters, and selected columns used in the SQL query align EXACTLY with the business intent.
+
+    If the query is valid, return "valid". If it is invalid, return "invalid" and provide a brief explanation of why it is invalid along with improved prompt to generate the correct query.
+
+    Output Format:
+    Return your response in the following JSON format:
+    
+    "is_valid": "true/false",
+    "explanation": "brief explanation of why the query is valid/invalid",
+    "improved_prompt": "improved prompt to generate the correct query"""
+    
+    user_prompt = f"""Translate the following SQL query into natural language: {state["sql_query"]}"""
 
     response = llm.invoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt)
     ])
     
+    parsed = json.loads(response.content)
     # Check for intent match AND make sure no syntax issues are mentioned
-    response_content = response.content.lower()
-    intent_match_true = "intent match: true" in response_content
-    has_ambiguity_issues = any(keyword in response_content for keyword in [
-        "ambiguous", "ambiguity", "syntax", "alias", "clarify", "specify which"
-    ])
+
+    matches_intent = parsed.get("is_valid", False)
+    improved_prompt = parsed.get("improved_prompt", state["prompt"])
     
-    # If there are ambiguity issues mentioned, override the intent match
-    matches_intent = intent_match_true and not has_ambiguity_issues
-    
-    logger.info(f"Verification result:\n{response.content}")
-    logger.info(f"Intent match from response: {intent_match_true}")
-    logger.info(f"Has ambiguity issues: {has_ambiguity_issues}")
+    logger.info(f"Intent match from response: {matches_intent}")
+
     logger.info(f"Final intent match: {matches_intent}")
     
     return {
-        "verification_result": response.content,
-        "matches_intent": matches_intent
+        "matches_intent": matches_intent,
+        "improved_prompt": improved_prompt
     }
 
 def correct_sql_node(state: AgentState) -> AgentState:
     """Correct the SQL query based on verification results."""
     logger.info("\n=== Correcting SQL Query ===")
-    logger.info(f"Current SQL:\n{state['sql_query']}")
-    logger.info(f"Verification feedback:\n{state['verification_result']}")
     
     # Increment attempt counter
     current_attempt = state.get("attempt", 0) + 1
     logger.info(f"Correction attempt: {current_attempt}")
+
+    improved_prompt = state["improved_prompt"]
+
+    return {"prompt": improved_prompt}
     
-    # Configure ChatOpenAI with environment variables
-    llm_config = {
-        'temperature': 0, 
-        'model_name': OPENAI_MODEL_NAME
-    }
-    if API_BASE_URL:
-        llm_config['base_url'] = API_BASE_URL
-    
-    llm = ChatOpenAI(**llm_config)
-    
-    system_prompt = f"""You are a SQL query corrector. Your task is to:
-    1. Analyze the verification results
+def correct_syntax_node(state: AgentState) -> AgentState:
+    """Correct the SQL query based on verification results."""
+    logger.info("\n=== Correcting SQL Query ===")
+    logger.info(f"SQL to correct:\n{state['sql_query']}")
+
+    current_attempt = state.get("attempt", 0) + 1
+    llm = get_llm()
+
+    system_prompt = f"""You are a PostgreSQL query corrector. Your task is to:
+    1. Analyze the verification results of the generated SQL query
     2. Identify the issues that need to be fixed
-    3. Generate a corrected SQL query that addresses all issues
-    
+    3. Generate a corrected SQL query that addresses all issues.
+    Strictly return ONLY the corrected SQL query, DO NOT include any other text, markdown or other formatting. The query should be complete and executable.
+
+    Error Message: {state["error_message"]}
+    Generated SQL Query: {state["sql_query"]}
     Available Schema:
-    {table_info}
+    {read_schema_metadata()}"""
     
-    CRITICAL SQL SYNTAX FIXES:
-    - For ambiguous column references, use explicit table aliases (e.g., conv.partner_id instead of partner_id)
-    - Ensure all column references are properly qualified with table aliases
-    - Fix any JOIN conditions that might be unclear
-    - Ensure GROUP BY and ORDER BY clauses use the same aliases as SELECT
-    
-    IMPORTANT: Return ONLY the corrected SQL query. Do not include any explanations, labels, or additional text.
-    The response should be a single SQL query that can be executed directly."""
-    
-    user_prompt = f"""Original Question: {state["prompt"]}
-
-Original SQL Query: {state["sql_query"]}
-
-Verification Results:
-{state["verification_result"]}
-
-Please provide ONLY the corrected SQL query that fixes all identified issues, especially any ambiguous column references by using proper table aliases."""
+    user_prompt = f"""Correct the following SQL query based on the error message: {state["error_message"]}"""
 
     response = llm.invoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=user_prompt)
     ])
-    
-    # Clean the corrected SQL query to remove any markdown formatting
+
     cleaned_sql = clean_sql_query(response.content)
-    
-    logger.info(f"Corrected SQL (raw):\n{response.content}")
-    logger.info(f"Corrected SQL (cleaned):\n{cleaned_sql}")
-    return {
-        "sql_query": cleaned_sql,
-        "attempt": current_attempt
-    }
+    return {"sql_query": state["sql_query"]}
 
 def execute_query_node(state: AgentState) -> AgentState:
     """Execute the SQL query and return results."""
@@ -320,23 +475,24 @@ def execute_query_node(state: AgentState) -> AgentState:
     logger.info(f"Executing:\n{state['sql_query']}")
     
     try:
-        with conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute(state["sql_query"])
-                results = cursor.fetchall()
+        sql_query = state["sql_query"]
+        if sql_query.endswith(';'):
+            sql_query = sql_query[:-1].strip()
+        results = supabase_client.rpc("run_sql", {"query": sql_query}).execute()
+        results = results.data
 
-                if not results:
-                    logger.info("Query executed successfully but returned no results")
-                    return {"results": "✅ Query ran successfully, but no results were found."}
+        if not results:
+            logger.info("Query executed successfully but returned no results")
+            return {"results": "✅ Query ran successfully, but no results were found."}
 
-                columns = list(results[0].keys())
-                rows = [list(row.values()) for row in results]
+        columns = list(results[0].keys())
+        rows = [list(row.values()) for row in results]
 
-                summary = f"✅ Query successful. Retrieved {len(results)} row(s).\n"
-                table = tabulate(rows, headers=columns, tablefmt="pretty")
-                
-                logger.info(f"Query executed successfully. Retrieved {len(results)} rows")
-                return {"results": summary + "\n" + table}
+        summary = f"✅ Query successful. Retrieved {len(results)} row(s).\n"
+        table = tabulate(rows, headers=columns, tablefmt="pretty")
+        
+        logger.info(f"Query executed successfully. Retrieved {len(results)} rows")
+        return {"results": summary + "\n" + table}
 
     except Exception as e:
         error_msg = f"❌ Query failed:\n{str(e)}"
@@ -355,8 +511,9 @@ def format_response_node(state: AgentState) -> AgentState:
 def should_retry(state: AgentState) -> bool:
     """Determine if we should retry the query generation."""
     current_attempt = state.get("attempt", 0)
-    matches_intent = state.get("matches_intent", False)
-    should_retry = not matches_intent and current_attempt < 3
+    matches_intent = state.get("matches_intent", False) 
+    syntax_validation_passed = state.get("syntax_validation_passed", False)
+    should_retry = not matches_intent and not syntax_validation_passed and current_attempt < 3
     
     logger.info(f"\n=== Retry Decision ===")
     logger.info(f"Current attempt: {current_attempt}")
@@ -374,7 +531,9 @@ workflow = StateGraph(AgentState)
 # Add nodes
 workflow.add_node("generate_sql", generate_sql_node)
 workflow.add_node("verify_intent", verify_intent_node)
+workflow.add_node("validate_sql", validate_sql_node)
 workflow.add_node("correct_sql", correct_sql_node)
+workflow.add_node("correct_syntax", correct_syntax_node)
 workflow.add_node("execute_query", execute_query_node)
 workflow.add_node("format_response", format_response_node)
 
@@ -385,10 +544,19 @@ workflow.add_conditional_edges(
     should_retry,
     {
         True: "correct_sql",
+        False: "validate_sql"
+    }
+)
+workflow.add_edge("correct_sql", "generate_sql")
+workflow.add_conditional_edges(
+    "validate_sql",
+    should_retry,
+    {
+        True: "correct_syntax",
         False: "execute_query"
     }
 )
-workflow.add_edge("correct_sql", "verify_intent")
+workflow.add_edge("correct_syntax", "validate_sql")
 workflow.add_edge("execute_query", "format_response")
 workflow.add_edge("format_response", END)
 
@@ -397,6 +565,8 @@ workflow.set_entry_point("generate_sql")
 
 # Compile the graph
 app = workflow.compile()
+
+
 
 # Main execution
 if __name__ == "__main__":
@@ -412,7 +582,11 @@ if __name__ == "__main__":
         "matches_intent": False,
         "results": "",
         "error": "",
-        "attempt": 0
+        "attempt": 0,
+        "syntax_validation_passed": False,
+        "explain_output": "",
+        "improved_prompt": "",
+        "error_message": ""
     }
     
     # Run the workflow with recursion limit as safety measure
@@ -425,3 +599,4 @@ if __name__ == "__main__":
     print("\nFinal Results:")
     print("=============")
     print(result["results"])
+    
