@@ -6,9 +6,9 @@ This API provides endpoints to test:
 2. SQL + Analytics combined workflow
 """
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-from sql_agent import app as sql_app
+from sql_agent import create_workflow
 from analytics_agent import analyze_sql_results
 import logging
 import traceback
@@ -17,6 +17,8 @@ from psycopg2.extras import RealDictCursor
 from collections import OrderedDict
 import datetime
 import os
+import queue
+import threading
 
 # Import screener functions
 from screener import (
@@ -41,88 +43,155 @@ CORS(app)  # Enable CORS for React frontend
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create a thread-safe queue for progress updates
+progress_queues = {}
+
+def generate_progress_id():
+    """Generate a unique progress ID"""
+    import uuid
+    return str(uuid.uuid4())
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return jsonify({"status": "healthy", "message": "API is running"})
 
+@app.route('/sql-agent/progress/<progress_id>', methods=['GET'])
+def get_progress(progress_id):
+    """SSE endpoint for progress updates"""
+    def generate():
+        if progress_id not in progress_queues:
+            progress_queues[progress_id] = queue.Queue()
+        
+        q = progress_queues[progress_id]
+        
+        while True:
+            try:
+                progress_data = q.get(timeout=30)  # 30 second timeout
+                if progress_data == "DONE":
+                    return
+                yield f"data: {json.dumps(progress_data)}\n\n"
+            except queue.Empty:
+                yield f"data: {json.dumps({'progress': -1, 'message': 'Timeout'})}\n\n"
+                return
+    
+    return Response(generate(), mimetype='text/event-stream')
+
 @app.route('/sql-agent', methods=['POST'])
 def test_sql_agent():
-    """Test SQL Agent only"""
+    """Test SQL Agent endpoint"""
     try:
-        data = request.get_json()
-        
-        if not data or 'query' not in data:
-            return jsonify({
-                "error": "Missing 'query' field in request body"
-            }), 400
-        
-        user_query = data['query'].strip()
+        data = request.json
+        user_query = data.get('query', '')
         
         if not user_query:
             return jsonify({
-                "error": "Query cannot be empty"
+                "success": False,
+                "error": "No query provided"
             }), 400
+
+        # Generate a progress ID for this request
+        progress_id = generate_progress_id()
+        progress_queues[progress_id] = queue.Queue()
+
+        def progress_callback(message: str, progress: int):
+            progress_queues[progress_id].put({
+                "message": message,
+                "progress": progress
+            })
+
+        # Create workflow with progress callback
+        workflow = create_workflow(progress_callback)
         
-        logger.info(f"Processing SQL query: {user_query}")
-        
-        # Initialize SQL agent state
-        sql_initial_state = {
+        # Initialize state
+        initial_state = {
             "prompt": user_query,
             "sql_query": "",
             "verification_result": "",
             "matches_intent": False,
             "results": "",
             "error": "",
-            "attempt": 0
+            "attempt": 0,
+            "syntax_validation_passed": False,
+            "explain_output": "",
+            "improved_prompt": "",
+            "error_message": "",
+            "progress": 0
         }
+
+        # Run workflow in a background thread
+        def run_workflow():
+            try:
+                result = workflow.invoke(initial_state, config={"recursion_limit": 50})
+                # Send final result
+                progress_queues[progress_id].put({
+                    "message": "Completed",
+                    "progress": 100,
+                    "result": {
+                        "success": True,
+                        "results": result["results"],
+                        "sql_query": result.get("sql_query", ""),
+                        "attempt": result.get("attempt", 0),
+                        "verification_result": result.get("verification_result", "")
+                    }
+                })
+            except Exception as e:
+                # Send error
+                progress_queues[progress_id].put({
+                    "message": f"Error: {str(e)}",
+                    "progress": 100,
+                    "error": str(e)
+                })
+            finally:
+                # Signal completion
+                progress_queues[progress_id].put("DONE")
+
+        # Start workflow in background thread
+        thread = threading.Thread(target=run_workflow)
+        thread.start()
         
-        # Run SQL agent
-        sql_result = sql_app.invoke(sql_initial_state, config={"recursion_limit": 50})
-        
-        response = {
+        return jsonify({
             "success": True,
-            "query": user_query,
-            "sql_query": sql_result.get("sql_query", ""),
-            "results": sql_result.get("results", ""),
-            "error": sql_result.get("error", ""),
-            "verification_result": sql_result.get("verification_result", ""),
-            "attempts": sql_result.get("attempt", 0)
-        }
-        
-        logger.info("SQL agent completed successfully")
-        return jsonify(response)
-        
+            "message": "Processing started",
+            "progress_id": progress_id
+        })
+
     except Exception as e:
-        logger.error(f"Error in SQL agent: {str(e)}")
-        logger.error(traceback.format_exc())
+        traceback.print_exc()
         return jsonify({
             "success": False,
-            "error": f"Internal server error: {str(e)}"
+            "error": str(e)
         }), 500
 
-@app.route('/analytics-agent', methods=['POST'])
-def test_analytics_agent():
+@app.route('/sql-analytics', methods=['POST'])
+def test_sql_analytics():
     """Test SQL + Analytics combined workflow"""
     try:
-        data = request.get_json()
-        
-        if not data or 'query' not in data:
-            return jsonify({
-                "error": "Missing 'query' field in request body"
-            }), 400
-        
-        user_query = data['query'].strip()
+        data = request.json
+        user_query = data.get('query', '')
         
         if not user_query:
             return jsonify({
-                "error": "Query cannot be empty"
+                "success": False,
+                "error": "No query provided"
             }), 400
-        
-        logger.info(f"Processing combined SQL + Analytics query: {user_query}")
-        
+
         # Step 1: Run SQL Agent
         logger.info("Step 1: Running SQL Agent...")
+        
+        # Generate a progress ID for this request
+        progress_id = generate_progress_id()
+        progress_queues[progress_id] = queue.Queue()
+
+        def progress_callback(message: str, progress: int):
+            progress_queues[progress_id].put({
+                "message": message,
+                "progress": progress
+            })
+
+        # Create workflow with progress callback
+        workflow = create_workflow(progress_callback)
+        
         sql_initial_state = {
             "prompt": user_query,
             "sql_query": "",
@@ -130,10 +199,15 @@ def test_analytics_agent():
             "matches_intent": False,
             "results": "",
             "error": "",
-            "attempt": 0
+            "attempt": 0,
+            "syntax_validation_passed": False,
+            "explain_output": "",
+            "improved_prompt": "",
+            "error_message": "",
+            "progress": 0
         }
         
-        sql_result = sql_app.invoke(sql_initial_state, config={"recursion_limit": 50})
+        sql_result = workflow.invoke(sql_initial_state, config={"recursion_limit": 50})
         sql_output = sql_result["results"]
         
         # Check if SQL agent failed
@@ -151,32 +225,13 @@ def test_analytics_agent():
         
         # Extract visualization images from analytics result if available
         visualization_images = []
-        try:
-            # The analytics agent returns a formatted string, but we need to get the raw result
-            # Let's modify this to get the full analytics state
-            from analytics_agent import app as analytics_app
-            
-            analytics_initial_state = {
-                "original_query": user_query,
-                "sql_results": sql_output,
-                "parsed_data": {},
-                "statistical_analysis": {},
-                "patterns_identified": [],
-                "trends_analysis": {},
-                "insights": [],
-                "visualizations": [],
-                "visualization_images": [],
-                "formatted_response": "",
-                "error": ""
-            }
-            
-            full_analytics_result = analytics_app.invoke(analytics_initial_state, config={"recursion_limit": 20})
-            visualization_images = full_analytics_result.get("visualization_images", [])
-            
-        except Exception as e:
-            logger.warning(f"Could not extract visualization images: {str(e)}")
+        if isinstance(analytics_result, dict):
+            visualization_images = analytics_result.pop("visualization_images", [])
         
-        response = {
+        # Signal completion
+        progress_queues[progress_id].put("DONE")
+        
+        return jsonify({
             "success": True,
             "query": user_query,
             "sql_query": sql_result.get("sql_query", ""),
@@ -184,18 +239,15 @@ def test_analytics_agent():
             "analytics_report": analytics_result,
             "visualization_images": visualization_images,
             "sql_attempts": sql_result.get("attempt", 0),
-            "verification_result": sql_result.get("verification_result", "")
-        }
-        
-        logger.info("Combined workflow completed successfully")
-        return jsonify(response)
-        
+            "verification_result": sql_result.get("verification_result", ""),
+            "progress_id": progress_id
+        })
+
     except Exception as e:
-        logger.error(f"Error in combined workflow: {str(e)}")
-        logger.error(traceback.format_exc())
+        traceback.print_exc()
         return jsonify({
             "success": False,
-            "error": f"Internal server error: {str(e)}"
+            "error": str(e)
         }), 500
 
 @app.route('/screener/metrics', methods=['GET'])
@@ -1339,7 +1391,7 @@ if __name__ == '__main__':
     print("📊 Available endpoints:")
     print("  • GET  /health - Health check")
     print("  • POST /sql-agent - Test SQL Agent only")
-    print("  • POST /analytics-agent - Test SQL + Analytics")
+    print("  • POST /sql-analytics - Test SQL + Analytics")
     print("  • GET  /screener/metrics - Get available metrics")
     print("  • GET  /screener/filters - Get filter options")
     print("  • POST /screener/data - Get screener data")

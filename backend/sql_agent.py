@@ -8,16 +8,19 @@ from psycopg2.extras import RealDictCursor
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from tabulate import tabulate
-from typing import TypedDict, Annotated, Sequence
+from typing import TypedDict, Annotated, Sequence, Optional, Callable
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
-from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import OpenAIEmbeddings
 import logging
 from logging.handlers import RotatingFileHandler
 import datetime
 from supabase import create_client, Client
+
+# Progress callback type
+ProgressCallback = Callable[[str, int], None]
 
 # Create logs directory if it doesn't exist
 if not os.path.exists('logs'):
@@ -258,6 +261,7 @@ class AgentState(TypedDict):
     error: str
     attempt: int
     table_info: str
+    progress: Optional[int]  # New field for progress tracking
 
 def get_table_info(prompt: str) -> str:
     table_info = retrieve_context(prompt)
@@ -282,8 +286,11 @@ def clean_sql_query(sql_text: str) -> str:
     
     return sql_text
 
-def generate_sql_node(state: AgentState) -> AgentState:
+def generate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
     """Generate SQL query from natural language input."""
+    if progress_callback:
+        progress_callback("Generating SQL query...", 20)
+    
     logger.info("\n=== Generating SQL Query ===")
     logger.info(f"Input prompt: {state['prompt']}")
 
@@ -292,7 +299,7 @@ def generate_sql_node(state: AgentState) -> AgentState:
     # Configure ChatOpenAI with environment variables
     llm = get_llm()
     
-    system_prompt = f"""YYou are an expert PostgreSQL query generator that creates accurate SQL queries based on natural language questions and database metadata. You will analyze user questions and generate appropriate PostgreSQL queries using the provided database schema information.
+    system_prompt = f"""You are an expert PostgreSQL query generator that creates accurate SQL queries based on natural language questions and database metadata. You will analyze user questions and generate appropriate PostgreSQL queries using the provided database schema information.
 
 Here is the comprehensive database metadata from Supabase: {schema_chunks}
 
@@ -325,6 +332,29 @@ Schema considerations:
 - Consider indexes that might affect query performance
 - Use appropriate table aliases for readability
 
+MANDATORY EXCLUSION RULES:
+- ALWAYS exclude internal partners/clients in ALL queries
+- For partner.partner_info table: ALWAYS add "AND is_internal = FALSE" or "WHERE is_internal = FALSE"
+- For client tables: ALWAYS add "AND is_internal = FALSE" or "WHERE is_internal = FALSE"
+- For trade tables: ALWAYS add "AND is_internal = FALSE" or "WHERE is_internal = FALSE"
+- This applies to ALL tables that have an is_internal column - NEVER include internal records
+- Internal records skew business metrics and should be excluded from all business analysis
+
+GEOGRAPHIC FIELD SELECTION RULES:
+- When user mentions specific COUNTRIES (Nigeria, India, Vietnam, etc.), use "partner_country" field
+- When user mentions REGIONS (Africa, Asia, Europe, etc.), use "partner_region" field
+- partner_country contains specific country names like 'Nigeria', 'India', 'Vietnam'
+- partner_region contains broader regions like 'Africa', 'Asia', 'Europe'
+- NEVER confuse country vs region - they are different fields with different purposes
+
+CRITICAL TIME-BASED QUERY RULES:
+- When asked about data "in [month/period]", filter for records WITHIN that specific period using BETWEEN
+- When asked about data "from [month/year]", use ">=" for the start date only
+- NEVER use <= for period-specific queries (this gives cumulative data)
+- For "activation rate in Jan 2025": compare partners who joined in Jan 2025 vs those who got activated in Jan 2025
+- Use date_joined BETWEEN '2025-01-01' AND '2025-01-31' for January 2025 data
+- Partner activation means having first_earning_date, first_client_joined_date, or similar activation indicators
+
 Strictly return ONLY the SQL query, DO NOT include any other text, markdown or other formatting. The query should be complete and executable."""
     
     response = llm.invoke([
@@ -337,57 +367,20 @@ Strictly return ONLY the SQL query, DO NOT include any other text, markdown or o
     
     logger.info(f"Generated SQL (raw):\n{response.content}")
     logger.info(f"Generated SQL (cleaned):\n{cleaned_sql}")
-    return {"sql_query": cleaned_sql}
+    return {"sql_query": cleaned_sql, "progress": 20}
 
-def validate_sql_node(state: AgentState) -> AgentState:
-    """Validate the SQL query."""
-    logger.info("\n=== Validating SQL Query ===")
-    logger.info(f"SQL to validate:\n{state['sql_query']}")
-
-    try:
-        explain = supabase_client.rpc("run_raw_sql", {"raw_sql": state["sql_query"]}).execute()
-        result_data = getattr(explain, "data", None)
-
-        if result_data:
-            logger.info("Validation response received:")
-            logger.info(result_data)
-
-            # Detect if result_data contains an error string
-            if result_data.find("cost") == -1:
-
-                return {
-                    "syntax_validation_passed": False,
-                    "error_message": result_data,
-                }
-
-            # Otherwise, assume it's valid EXPLAIN output
-            return {
-                "syntax_validation_passed": True,
-                "explain_output": result_data,
-            }
-
-        else:
-            logger.warning("Validation returned empty data.")
-            return {
-                "syntax_validation_passed": False,
-                "error_message": "No output returned from Supabase RPC.",
-            }
-
-    except Exception as e:
-        logger.error(f"Unexpected error during SQL validation: {str(e)}")
-        return {
-            "syntax_validation_passed": False,
-            "error_message": str(e),
-        }
-def verify_intent_node(state: AgentState) -> AgentState:
+def verify_intent_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
     """Verify if the SQL query matches the original intent."""
+    if progress_callback:
+        progress_callback("Verifying query intent...", 40)
+    
     logger.info("\n=== Verifying SQL Intent ===")
     logger.info(f"SQL to verify:\n{state['sql_query']}")
     
     # Configure ChatOpenAI with environment variables
     llm = get_llm()
     
-    system_prompt = f"""You are a PostgreSQL query validator. our task is to verify that a generated SQL query correctly matches the business intent expressed in the original natural language prompt.
+    system_prompt = f"""You are a PostgreSQL query validator. Your task is to verify that a generated SQL query correctly matches the business intent expressed in the original natural language prompt.
     Here is the original natural language prompt that describes the business intent: {state["prompt"]}
     Your validation process should follow these steps:
 
@@ -425,8 +418,64 @@ def verify_intent_node(state: AgentState) -> AgentState:
     
     return {
         "matches_intent": matches_intent,
-        "improved_prompt": improved_prompt
+        "improved_prompt": improved_prompt,
+        "progress": 40
     }
+
+def validate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
+    """Validate the SQL query."""
+    if progress_callback:
+        progress_callback("Validating SQL syntax...", 60)
+    
+    logger.info("\n=== Validating SQL Query ===")
+    logger.info(f"SQL to validate:\n{state['sql_query']}")
+
+    try:
+        explain = supabase_client.rpc("run_raw_sql", {"raw_sql": state["sql_query"]}).execute()
+        result_data = getattr(explain, "data", None)
+
+        if result_data:
+            logger.info("Validation response received:")
+            logger.info(result_data)
+
+            # Detect if result_data contains an error string
+            if result_data.find("cost") == -1:
+                if progress_callback:
+                    progress_callback("SQL validation failed, correcting syntax...", 60)
+                return {
+                    "syntax_validation_passed": False,
+                    "error_message": result_data,
+                    "progress": 60
+                }
+
+            # Otherwise, assume it's valid EXPLAIN output
+            if progress_callback:
+                progress_callback("SQL validation passed", 60)
+            return {
+                "syntax_validation_passed": True,
+                "explain_output": result_data,
+                "progress": 60
+            }
+
+        else:
+            logger.warning("Validation returned empty data.")
+            if progress_callback:
+                progress_callback("SQL validation failed - no output", 60)
+            return {
+                "syntax_validation_passed": False,
+                "error_message": "No output returned from Supabase RPC.",
+                "progress": 60
+            }
+
+    except Exception as e:
+        logger.error(f"Unexpected error during SQL validation: {str(e)}")
+        if progress_callback:
+            progress_callback(f"SQL validation error: {str(e)}", 60)
+        return {
+            "syntax_validation_passed": False,
+            "error_message": str(e),
+            "progress": 60
+        }
 
 def correct_sql_node(state: AgentState) -> AgentState:
     """Correct the SQL query based on verification results."""
@@ -469,8 +518,11 @@ def correct_syntax_node(state: AgentState) -> AgentState:
     cleaned_sql = clean_sql_query(response.content)
     return {"sql_query": state["sql_query"]}
 
-def execute_query_node(state: AgentState) -> AgentState:
+def execute_query_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
     """Execute the SQL query and return results."""
+    if progress_callback:
+        progress_callback("Executing query...", 80)
+    
     logger.info("\n=== Executing SQL Query ===")
     logger.info(f"Executing:\n{state['sql_query']}")
     
@@ -483,7 +535,9 @@ def execute_query_node(state: AgentState) -> AgentState:
 
         if not results:
             logger.info("Query executed successfully but returned no results")
-            return {"results": "✅ Query ran successfully, but no results were found."}
+            if progress_callback:
+                progress_callback("Query executed - no results found", 80)
+            return {"results": "✅ Query ran successfully, but no results were found.", "progress": 80}
 
         columns = list(results[0].keys())
         rows = [list(row.values()) for row in results]
@@ -492,20 +546,28 @@ def execute_query_node(state: AgentState) -> AgentState:
         table = tabulate(rows, headers=columns, tablefmt="pretty")
         
         logger.info(f"Query executed successfully. Retrieved {len(results)} rows")
-        return {"results": summary + "\n" + table}
+        if progress_callback:
+            progress_callback(f"Query executed - found {len(results)} rows", 80)
+        return {"results": summary + "\n" + table, "progress": 80}
 
     except Exception as e:
         error_msg = f"❌ Query failed:\n{str(e)}"
         logger.error(f"Query execution failed: {str(e)}")
-        return {"error": error_msg}
+        if progress_callback:
+            progress_callback(f"Query execution failed: {str(e)}", 80)
+        return {"error": error_msg, "progress": 80}
 
-def format_response_node(state: AgentState) -> AgentState:
+def format_response_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
     """Format the final response."""
+    if progress_callback:
+        progress_callback("Formatting results...", 100)
+    
     logger.info("\n=== Formatting Final Response ===")
     if state.get("error"):
         logger.info("Formatting error response")
-        return {"results": state["error"]}
+        return {"results": state["error"], "progress": 100}
     logger.info("Formatting successful response")
+    state["progress"] = 100
     return state
 
 def should_retry(state: AgentState) -> bool:
@@ -525,48 +587,49 @@ def should_retry(state: AgentState) -> bool:
     
     return should_retry
 
-# Create the graph
-workflow = StateGraph(AgentState)
+def create_workflow(progress_callback: Optional[ProgressCallback] = None) -> StateGraph:
+    """Create and return a workflow with optional progress callback"""
+    workflow = StateGraph(AgentState)
 
-# Add nodes
-workflow.add_node("generate_sql", generate_sql_node)
-workflow.add_node("verify_intent", verify_intent_node)
-workflow.add_node("validate_sql", validate_sql_node)
-workflow.add_node("correct_sql", correct_sql_node)
-workflow.add_node("correct_syntax", correct_syntax_node)
-workflow.add_node("execute_query", execute_query_node)
-workflow.add_node("format_response", format_response_node)
+    # Add nodes with progress callback
+    workflow.add_node("generate_sql", lambda x: generate_sql_node(x, progress_callback))
+    workflow.add_node("verify_intent", lambda x: verify_intent_node(x, progress_callback))
+    workflow.add_node("validate_sql", lambda x: validate_sql_node(x, progress_callback))
+    workflow.add_node("correct_sql", correct_sql_node)
+    workflow.add_node("correct_syntax", correct_syntax_node)
+    workflow.add_node("execute_query", lambda x: execute_query_node(x, progress_callback))
+    workflow.add_node("format_response", lambda x: format_response_node(x, progress_callback))
 
-# Define the flow
-workflow.add_edge("generate_sql", "verify_intent")
-workflow.add_conditional_edges(
-    "verify_intent",
-    should_retry,
-    {
-        True: "correct_sql",
-        False: "validate_sql"
-    }
-)
-workflow.add_edge("correct_sql", "generate_sql")
-workflow.add_conditional_edges(
-    "validate_sql",
-    should_retry,
-    {
-        True: "correct_syntax",
-        False: "execute_query"
-    }
-)
-workflow.add_edge("correct_syntax", "validate_sql")
-workflow.add_edge("execute_query", "format_response")
-workflow.add_edge("format_response", END)
+    # Define the flow
+    workflow.add_edge("generate_sql", "verify_intent")
+    workflow.add_conditional_edges(
+        "verify_intent",
+        should_retry,
+        {
+            True: "correct_sql",
+            False: "validate_sql"
+        }
+    )
+    workflow.add_edge("correct_sql", "generate_sql")
+    workflow.add_conditional_edges(
+        "validate_sql",
+        should_retry,
+        {
+            True: "correct_syntax",
+            False: "execute_query"
+        }
+    )
+    workflow.add_edge("correct_syntax", "validate_sql")
+    workflow.add_edge("execute_query", "format_response")
+    workflow.add_edge("format_response", END)
 
-# Set the entry point
-workflow.set_entry_point("generate_sql")
+    # Set the entry point
+    workflow.set_entry_point("generate_sql")
 
-# Compile the graph
-app = workflow.compile()
+    return workflow.compile()
 
-
+# Create a default compiled workflow without progress callback
+app = create_workflow()
 
 # Main execution
 if __name__ == "__main__":
@@ -586,7 +649,8 @@ if __name__ == "__main__":
         "syntax_validation_passed": False,
         "explain_output": "",
         "improved_prompt": "",
-        "error_message": ""
+        "error_message": "",
+        "progress": 0
     }
     
     # Run the workflow with recursion limit as safety measure
