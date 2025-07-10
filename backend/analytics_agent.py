@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from typing import TypedDict, Annotated, Sequence, Dict, Any, List
+from typing import TypedDict, Annotated, Sequence, Dict, Any, List, Optional, Callable
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
@@ -21,6 +21,9 @@ import warnings
 import base64
 from io import BytesIO
 warnings.filterwarnings('ignore')
+
+# Progress callback type
+ProgressCallback = Callable[[str, int], None]
 
 # Create logs directory if it doesn't exist
 if not os.path.exists('logs'):
@@ -75,8 +78,11 @@ class AnalyticsState(TypedDict):
     formatted_response: str
     error: str
 
-def parse_data_node(state: AnalyticsState) -> AnalyticsState:
+def parse_data_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
     """Parse SQL results into structured data for analysis."""
+    if progress_callback:
+        progress_callback("Parsing SQL results...", 60)
+    
     logger.info("\n=== Parsing Data ===")
     logger.info(f"Original query: {state['original_query']}")
     logger.info(f"SQL results preview: {state['sql_results'][:200]}...")
@@ -232,8 +238,11 @@ def parse_data_node(state: AnalyticsState) -> AnalyticsState:
         logger.error(error_msg)
         return {"error": error_msg, "parsed_data": {"error": error_msg}}
 
-def statistical_analysis_node(state: AnalyticsState) -> AnalyticsState:
+def statistical_analysis_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
     """Perform statistical analysis on the parsed data."""
+    if progress_callback:
+        progress_callback("Performing statistical analysis...", 70)
+    
     logger.info("\n=== Statistical Analysis ===")
     
     try:
@@ -340,8 +349,11 @@ def statistical_analysis_node(state: AnalyticsState) -> AnalyticsState:
         logger.error(error_msg)
         return {"error": error_msg, "statistical_analysis": {"error": error_msg}}
 
-def trends_analysis_node(state: AnalyticsState) -> AnalyticsState:
+def trends_analysis_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
     """Analyze trends in the data."""
+    if progress_callback:
+        progress_callback("Analyzing trends...", 80)
+    
     logger.info("\n=== Trends Analysis ===")
     
     try:
@@ -465,8 +477,11 @@ def trends_analysis_node(state: AnalyticsState) -> AnalyticsState:
         logger.error(error_msg)
         return {"error": error_msg, "trends_analysis": {"error": error_msg}}
 
-def generate_insights_node(state: AnalyticsState) -> AnalyticsState:
+def generate_insights_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
     """Generate business insights using LLM based on the analysis."""
+    if progress_callback:
+        progress_callback("Generating business insights...", 90)
+    
     logger.info("\n=== Generating Insights ===")
     
     try:
@@ -544,8 +559,11 @@ Provide 5-10 actionable business insights based on this analysis."""
         logger.error(error_msg)
         return {"error": error_msg, "insights": [f"Error generating insights: {error_msg}"]}
 
-def create_visualizations_node(state: AnalyticsState) -> AnalyticsState:
+def create_visualizations_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
     """Create visualizations based on the data and analysis."""
+    if progress_callback:
+        progress_callback("Creating visualizations...", 95)
+    
     logger.info("\n=== Creating Visualizations ===")
     
     try:
@@ -1072,8 +1090,11 @@ What is the most appropriate chart type?"""
             "visualization_images": []
         }
 
-def format_response_node(state: AnalyticsState) -> AnalyticsState:
+def format_response_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
     """Format the final analytics response."""
+    if progress_callback:
+        progress_callback("Formatting analytics report...", 100)
+    
     logger.info("\n=== Formatting Final Response ===")
     
     try:
@@ -1191,13 +1212,14 @@ workflow.set_entry_point("parse_data_node")
 app = workflow.compile()
 
 # Helper function to run analytics on SQL results
-def analyze_sql_results(original_query: str, sql_results: str) -> str:
+def analyze_sql_results(original_query: str, sql_results: str, progress_callback: Optional[ProgressCallback] = None) -> str:
     """
     Main function to run analytics on SQL results.
     
     Args:
         original_query: The original user question
         sql_results: The formatted results from SQL agent
+        progress_callback: Optional callback for progress updates
     
     Returns:
         Formatted analytics report
@@ -1220,7 +1242,32 @@ def analyze_sql_results(original_query: str, sql_results: str) -> str:
     
     # Run the workflow
     try:
+        # Create workflow with progress callback
+        workflow = StateGraph(AnalyticsState)
+
+        # Add nodes with different names to avoid state key conflicts
+        workflow.add_node("parse_data_node", lambda state: parse_data_node(state, progress_callback))
+        workflow.add_node("statistical_analysis_node", lambda state: statistical_analysis_node(state, progress_callback))
+        workflow.add_node("trends_analysis_node", lambda state: trends_analysis_node(state, progress_callback))
+        workflow.add_node("generate_insights_node", lambda state: generate_insights_node(state, progress_callback))
+        workflow.add_node("create_visualizations_node", lambda state: create_visualizations_node(state, progress_callback))
+        workflow.add_node("format_response_node", lambda state: format_response_node(state, progress_callback))
+
+        # Define the flow
+        workflow.add_edge("parse_data_node", "statistical_analysis_node")
+        workflow.add_edge("statistical_analysis_node", "trends_analysis_node")
+        workflow.add_edge("trends_analysis_node", "generate_insights_node")
+        workflow.add_edge("generate_insights_node", "create_visualizations_node")
+        workflow.add_edge("create_visualizations_node", "format_response_node")
+        workflow.add_edge("format_response_node", END)
+
+        # Set the entry point
+        workflow.set_entry_point("parse_data_node")
+
+        # Compile and run
+        app = workflow.compile()
         result = app.invoke(initial_state, config={"recursion_limit": 20})
+        
         logger.info("Analytics workflow completed successfully")
         return result["formatted_response"]
     except Exception as e:

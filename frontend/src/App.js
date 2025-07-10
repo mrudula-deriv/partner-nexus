@@ -111,6 +111,8 @@ function App() {
   // All existing state variables remain the same
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sqlLoading, setSqlLoading] = useState(false);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [sqlResult, setSqlResult] = useState(null);
   const [analyticsResult, setAnalyticsResult] = useState(null);
   const [activeTab, setActiveTab] = useState('spotlight'); // Changed default to spotlight
@@ -194,7 +196,7 @@ function App() {
       return;
     }
 
-    setLoading(true);
+    setSqlLoading(true);
     setError(null);
     setSqlResult(null);
     setProgress(0);
@@ -219,15 +221,15 @@ function App() {
           const data = JSON.parse(event.data);
           if (data.progress === -1) {
             eventSource.close();
-            setLoading(false);
+            setSqlLoading(false);
             setError('Operation timed out');
           } else if (data.progress === 100 && data.result) {
             eventSource.close();
-            setLoading(false);
+            setSqlLoading(false);
             setSqlResult(data.result);
           } else if (data.error) {
             eventSource.close();
-            setLoading(false);
+            setSqlLoading(false);
             setError(data.error);
           } else {
             setProgress(data.progress);
@@ -237,12 +239,12 @@ function App() {
 
         eventSource.onerror = () => {
           eventSource.close();
-          setLoading(false);
+          setSqlLoading(false);
           setError('Lost connection to server');
         };
       }
     } catch (err) {
-      setLoading(false);
+      setSqlLoading(false);
       setError(err.response?.data?.error || err.message);
     }
   };
@@ -253,21 +255,57 @@ function App() {
       return;
     }
 
-    setLoading(true);
+    setAnalyticsLoading(true);
     setError(null);
     setSqlResult(null);
     setAnalyticsResult(null);
+    setProgress(0);
+    setProgressMessage('');
 
     try {
+      // Close any existing SSE connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
       const response = await axios.post(`${API_BASE_URL}/sql-analytics`, {
         query: query
       });
 
-      setAnalyticsResult(response.data);
+      if (response.data.progress_id) {
+        // Set up SSE for progress updates
+        const eventSource = new EventSource(`${API_BASE_URL}/sql-agent/progress/${response.data.progress_id}`);
+        eventSourceRef.current = eventSource;
+
+        eventSource.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.progress === -1) {
+            eventSource.close();
+            setAnalyticsLoading(false);
+            setError('Operation timed out');
+          } else if (data.progress === 100 && data.result) {
+            eventSource.close();
+            setAnalyticsLoading(false);
+            setAnalyticsResult(data.result);
+          } else if (data.error) {
+            eventSource.close();
+            setAnalyticsLoading(false);
+            setError(data.error);
+          } else {
+            setProgress(data.progress);
+            setProgressMessage(data.message);
+          }
+        };
+
+        eventSource.onerror = () => {
+          eventSource.close();
+          setAnalyticsLoading(false);
+          setError('Lost connection to server');
+        };
+      }
     } catch (err) {
+      setAnalyticsLoading(false);
       setError(err.response?.data?.error || 'Failed to process analytics query');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -733,11 +771,11 @@ function App() {
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <button
                     onClick={() => handleSqlTest()}
-                    disabled={loading}
+                    disabled={sqlLoading || analyticsLoading}
                     className="btn btn-primary"
-                    style={{ opacity: loading ? 0.7 : 1 }}
+                    style={{ opacity: sqlLoading ? 0.7 : 1 }}
                   >
-                    {loading && !analyticsResult ? (
+                    {sqlLoading ? (
                       <>
                         <div className="loading-spinner" style={{ width: '16px', height: '16px' }}></div>
                         Testing SQL Agent...
@@ -752,11 +790,11 @@ function App() {
 
                   <button
                     onClick={handleAnalyticsTest}
-                    disabled={loading}
+                    disabled={sqlLoading || analyticsLoading}
                     className="btn btn-primary"
                     style={{ opacity: loading ? 0.7 : 1 }}
                   >
-                    {loading && !sqlResult ? (
+                    {analyticsLoading ? (
                       <>
                         <div className="loading-spinner" style={{ width: '16px', height: '16px' }}></div>
                         Testing SQL + Analytics...
@@ -777,7 +815,7 @@ function App() {
                   </button>
                 </div>
 
-                {loading && !analyticsResult && (
+                {(sqlLoading || analyticsLoading) && progress > 0 && (
                   <ProgressBar progress={progress} message={progressMessage} />
                 )}
 
