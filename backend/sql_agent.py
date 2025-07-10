@@ -87,6 +87,42 @@ def get_llm(model=OPENAI_MODEL_NAME, temperature=0) -> ChatOpenAI:
         config["base_url"] = API_BASE_URL
     return ChatOpenAI(**config)
 
+def save_categorical_dictionary(supabase_client, output_path="metadata/categorical_values.json"):
+    """
+    Calls the build_categorical_dictionary function on Supabase and saves result as a JSON file.
+    
+    Args:
+        supabase_client: An authenticated Supabase Python client.
+        output_path (str): Path to write the output JSON.
+    Returns:
+        None
+    """
+    # Call the RPC function
+    print("Fetching categorical dictionary from Supabase...")
+    response = supabase_client.rpc("build_categorical_dictionary").execute()
+    data = response.data
+
+    if not data:
+        raise ValueError("No data returned from Supabase RPC build_categorical_dictionary.")
+
+    # Make sure the output directory exists
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    # Write to JSON file
+    with open(output_path, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"✓ Categorical dictionary saved to {output_path}")
+
+def read_categorical_dictionary():
+    """Read schema metadata from JSON file."""
+    json_file_path = 'metadata/categorical_values.json'
+    if not os.path.exists(json_file_path):
+        categorical_dict = save_categorical_dictionary(supabase_client)
+    
+    with open(json_file_path, 'r') as f:
+        categorical_dict = json.load(f)
+    return categorical_dict
+
 def get_multi_schema_metadata(schemas: list[str]):
     """
     Fetches metadata for the given schemas by calling the Supabase RPC function,
@@ -286,10 +322,13 @@ def clean_sql_query(sql_text: str) -> str:
     
     return sql_text
 
-def generate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
+def generate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
     """Generate SQL query from natural language input."""
+    progress = 20
     if progress_callback:
-        progress_callback("Generating SQL query...", 20)
+        if get_progress:
+            progress = get_progress(progress)
+        progress_callback("Generating SQL query...", progress)
     
     logger.info("\n=== Generating SQL Query ===")
     logger.info(f"Input prompt: {state['prompt']}")
@@ -340,13 +379,6 @@ MANDATORY EXCLUSION RULES:
 - This applies to ALL tables that have an is_internal column - NEVER include internal records
 - Internal records skew business metrics and should be excluded from all business analysis
 
-GEOGRAPHIC FIELD SELECTION RULES:
-- When user mentions specific COUNTRIES (Nigeria, India, Vietnam, etc.), use "partner_country" field
-- When user mentions REGIONS (Africa, Asia, Europe, etc.), use "partner_region" field
-- partner_country contains specific country names like 'Nigeria', 'India', 'Vietnam'
-- partner_region contains broader regions like 'Africa', 'Asia', 'Europe'
-- NEVER confuse country vs region - they are different fields with different purposes
-
 CRITICAL TIME-BASED QUERY RULES:
 - When asked about data "in [month/period]", filter for records WITHIN that specific period using BETWEEN
 - When asked about data "from [month/year]", use ">=" for the start date only
@@ -367,12 +399,15 @@ Strictly return ONLY the SQL query, DO NOT include any other text, markdown or o
     
     logger.info(f"Generated SQL (raw):\n{response.content}")
     logger.info(f"Generated SQL (cleaned):\n{cleaned_sql}")
-    return {"sql_query": cleaned_sql, "progress": 20}
+    return {"sql_query": cleaned_sql, "progress": progress}
 
-def verify_intent_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
+def verify_intent_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
     """Verify if the SQL query matches the original intent."""
+    progress = 40
     if progress_callback:
-        progress_callback("Verifying query intent...", 40)
+        if get_progress:
+            progress = get_progress(progress)
+        progress_callback("Verifying query intent...", progress)
     
     logger.info("\n=== Verifying SQL Intent ===")
     logger.info(f"SQL to verify:\n{state['sql_query']}")
@@ -419,13 +454,16 @@ def verify_intent_node(state: AgentState, progress_callback: Optional[ProgressCa
     return {
         "matches_intent": matches_intent,
         "improved_prompt": improved_prompt,
-        "progress": 40
+        "progress": progress
     }
 
-def validate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
+def validate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
     """Validate the SQL query."""
+    progress = 60
     if progress_callback:
-        progress_callback("Validating SQL syntax...", 60)
+        if get_progress:
+            progress = get_progress(progress)
+        progress_callback("Validating SQL syntax...", progress)
     
     logger.info("\n=== Validating SQL Query ===")
     logger.info(f"SQL to validate:\n{state['sql_query']}")
@@ -433,6 +471,7 @@ def validate_sql_node(state: AgentState, progress_callback: Optional[ProgressCal
     try:
         explain = supabase_client.rpc("run_raw_sql", {"raw_sql": state["sql_query"]}).execute()
         result_data = getattr(explain, "data", None)
+        categorical_dict = read_categorical_dictionary()
 
         if result_data:
             logger.info("Validation response received:")
@@ -441,40 +480,40 @@ def validate_sql_node(state: AgentState, progress_callback: Optional[ProgressCal
             # Detect if result_data contains an error string
             if result_data.find("cost") == -1:
                 if progress_callback:
-                    progress_callback("SQL validation failed, correcting syntax...", 60)
+                    progress_callback("SQL validation failed, correcting syntax...", progress)
                 return {
                     "syntax_validation_passed": False,
                     "error_message": result_data,
-                    "progress": 60
+                    "progress": progress
                 }
 
             # Otherwise, assume it's valid EXPLAIN output
             if progress_callback:
-                progress_callback("SQL validation passed", 60)
+                progress_callback("SQL validation passed", progress)
             return {
                 "syntax_validation_passed": True,
                 "explain_output": result_data,
-                "progress": 60
+                "progress": progress
             }
 
         else:
             logger.warning("Validation returned empty data.")
             if progress_callback:
-                progress_callback("SQL validation failed - no output", 60)
+                progress_callback("SQL validation failed - no output", progress)
             return {
                 "syntax_validation_passed": False,
                 "error_message": "No output returned from Supabase RPC.",
-                "progress": 60
+                "progress": progress
             }
 
     except Exception as e:
         logger.error(f"Unexpected error during SQL validation: {str(e)}")
         if progress_callback:
-            progress_callback(f"SQL validation error: {str(e)}", 60)
+            progress_callback(f"SQL validation error: {str(e)}", progress)
         return {
             "syntax_validation_passed": False,
             "error_message": str(e),
-            "progress": 60
+            "progress": progress
         }
 
 def correct_sql_node(state: AgentState) -> AgentState:
@@ -516,12 +555,15 @@ def correct_syntax_node(state: AgentState) -> AgentState:
     ])
 
     cleaned_sql = clean_sql_query(response.content)
-    return {"sql_query": state["sql_query"]}
+    return {"sql_query": cleaned_sql}
 
-def execute_query_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
+def execute_query_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
     """Execute the SQL query and return results."""
+    progress = 80
     if progress_callback:
-        progress_callback("Executing query...", 80)
+        if get_progress:
+            progress = get_progress(progress)
+        progress_callback("Executing query...", progress)
     
     logger.info("\n=== Executing SQL Query ===")
     logger.info(f"Executing:\n{state['sql_query']}")
@@ -536,8 +578,8 @@ def execute_query_node(state: AgentState, progress_callback: Optional[ProgressCa
         if not results:
             logger.info("Query executed successfully but returned no results")
             if progress_callback:
-                progress_callback("Query executed - no results found", 80)
-            return {"results": "✅ Query ran successfully, but no results were found.", "progress": 80}
+                progress_callback("Query executed - no results found", progress)
+            return {"results": "✅ Query ran successfully, but no results were found.", "progress": progress}
 
         columns = list(results[0].keys())
         rows = [list(row.values()) for row in results]
@@ -547,27 +589,30 @@ def execute_query_node(state: AgentState, progress_callback: Optional[ProgressCa
         
         logger.info(f"Query executed successfully. Retrieved {len(results)} rows")
         if progress_callback:
-            progress_callback(f"Query executed - found {len(results)} rows", 80)
-        return {"results": summary + "\n" + table, "progress": 80}
+            progress_callback(f"Query executed - found {len(results)} rows", progress)
+        return {"results": summary + "\n" + table, "progress": progress}
 
     except Exception as e:
         error_msg = f"❌ Query failed:\n{str(e)}"
         logger.error(f"Query execution failed: {str(e)}")
         if progress_callback:
-            progress_callback(f"Query execution failed: {str(e)}", 80)
-        return {"error": error_msg, "progress": 80}
+            progress_callback(f"Query execution failed: {str(e)}", progress)
+        return {"error": error_msg, "progress": progress}
 
-def format_response_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None) -> AgentState:
+def format_response_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
     """Format the final response."""
+    progress = 100
     if progress_callback:
-        progress_callback("Formatting results...", 100)
+        if get_progress:
+            progress = get_progress(progress)
+        progress_callback("Formatting results...", progress)
     
     logger.info("\n=== Formatting Final Response ===")
     if state.get("error"):
         logger.info("Formatting error response")
-        return {"results": state["error"], "progress": 100}
+        return {"results": state["error"], "progress": progress}
     logger.info("Formatting successful response")
-    state["progress"] = 100
+    state["progress"] = progress
     return state
 
 def should_retry(state: AgentState) -> bool:
@@ -587,18 +632,26 @@ def should_retry(state: AgentState) -> bool:
     
     return should_retry
 
-def create_workflow(progress_callback: Optional[ProgressCallback] = None) -> StateGraph:
+def create_workflow(progress_callback: Optional[ProgressCallback] = None, is_analytics_workflow: bool = False) -> StateGraph:
     """Create and return a workflow with optional progress callback"""
     workflow = StateGraph(AgentState)
 
+    # Calculate progress percentages based on workflow type
+    def get_progress(base_progress: int) -> int:
+        if is_analytics_workflow:
+            # When part of analytics workflow, use 0-50% range
+            return base_progress // 2
+        # When running independently, use full 0-100% range
+        return base_progress
+
     # Add nodes with progress callback
-    workflow.add_node("generate_sql", lambda x: generate_sql_node(x, progress_callback))
-    workflow.add_node("verify_intent", lambda x: verify_intent_node(x, progress_callback))
-    workflow.add_node("validate_sql", lambda x: validate_sql_node(x, progress_callback))
+    workflow.add_node("generate_sql", lambda x: generate_sql_node(x, progress_callback, get_progress))
+    workflow.add_node("verify_intent", lambda x: verify_intent_node(x, progress_callback, get_progress))
+    workflow.add_node("validate_sql", lambda x: validate_sql_node(x, progress_callback, get_progress))
     workflow.add_node("correct_sql", correct_sql_node)
     workflow.add_node("correct_syntax", correct_syntax_node)
-    workflow.add_node("execute_query", lambda x: execute_query_node(x, progress_callback))
-    workflow.add_node("format_response", lambda x: format_response_node(x, progress_callback))
+    workflow.add_node("execute_query", lambda x: execute_query_node(x, progress_callback, get_progress))
+    workflow.add_node("format_response", lambda x: format_response_node(x, progress_callback, get_progress))
 
     # Define the flow
     workflow.add_edge("generate_sql", "verify_intent")

@@ -100,8 +100,8 @@ def test_sql_agent():
                 "progress": progress
             })
 
-        # Create workflow with progress callback
-        workflow = create_workflow(progress_callback)
+        # Create workflow with progress callback - independent mode
+        workflow = create_workflow(progress_callback, is_analytics_workflow=False)
         
         # Initialize state
         initial_state = {
@@ -176,70 +176,98 @@ def test_sql_analytics():
                 "error": "No query provided"
             }), 400
 
-        # Step 1: Run SQL Agent
-        logger.info("Step 1: Running SQL Agent...")
-        
         # Generate a progress ID for this request
         progress_id = generate_progress_id()
         progress_queues[progress_id] = queue.Queue()
 
-        def progress_callback(message: str, progress: int):
+        def sql_progress_callback(message: str, progress: int):
             progress_queues[progress_id].put({
                 "message": message,
                 "progress": progress
             })
 
-        # Create workflow with progress callback
-        workflow = create_workflow(progress_callback)
-        
-        sql_initial_state = {
-            "prompt": user_query,
-            "sql_query": "",
-            "verification_result": "",
-            "matches_intent": False,
-            "results": "",
-            "error": "",
-            "attempt": 0,
-            "syntax_validation_passed": False,
-            "explain_output": "",
-            "improved_prompt": "",
-            "error_message": "",
-            "progress": 0
-        }
-        
-        sql_result = workflow.invoke(sql_initial_state, config={"recursion_limit": 50})
-        sql_output = sql_result["results"]
-        
-        # Check if SQL agent failed
-        if sql_result.get("error"):
-            return jsonify({
-                "success": False,
-                "error": f"SQL Agent failed: {sql_result['error']}",
-                "sql_query": sql_result.get("sql_query", ""),
-                "sql_results": sql_output
-            }), 500
-        
-        # Step 2: Run Analytics Agent
-        logger.info("Step 2: Running Analytics Agent...")
-        analytics_result = analyze_sql_results(user_query, sql_output)
-        
-        # Extract visualization images from analytics result if available
-        visualization_images = []
-        if isinstance(analytics_result, dict):
-            visualization_images = analytics_result.pop("visualization_images", [])
-        
-        # Signal completion
-        progress_queues[progress_id].put("DONE")
+        def analytics_progress_callback(message: str, progress: int):
+            progress_queues[progress_id].put({
+                "message": message,
+                "progress": progress
+            })
+
+        def run_workflow():
+            try:
+                # Step 1: Run SQL Agent (0-50% progress)
+                logger.info("Step 1: Running SQL Agent...")
+                workflow = create_workflow(sql_progress_callback, is_analytics_workflow=True)
+                
+                sql_initial_state = {
+                    "prompt": user_query,
+                    "sql_query": "",
+                    "verification_result": "",
+                    "matches_intent": False,
+                    "results": "",
+                    "error": "",
+                    "attempt": 0,
+                    "syntax_validation_passed": False,
+                    "explain_output": "",
+                    "improved_prompt": "",
+                    "error_message": "",
+                    "progress": 0
+                }
+                
+                sql_result = workflow.invoke(sql_initial_state, config={"recursion_limit": 50})
+                sql_output = sql_result["results"]
+                
+                # Check if SQL agent failed
+                if sql_result.get("error"):
+                    progress_queues[progress_id].put({
+                        "message": f"SQL Agent failed: {sql_result['error']}",
+                        "progress": 50,
+                        "error": sql_result['error']
+                    })
+                    progress_queues[progress_id].put("DONE")
+                    return
+                
+                # Step 2: Run Analytics Agent (50-100% progress)
+                logger.info("Step 2: Running Analytics Agent...")
+                analytics_result = analyze_sql_results(user_query, sql_output, analytics_progress_callback)
+                
+                # Extract visualization images from analytics result if available
+                visualization_images = []
+                if isinstance(analytics_result, dict):
+                    visualization_images = analytics_result.pop("visualization_images", [])
+                
+                # Send final result
+                progress_queues[progress_id].put({
+                    "message": "Completed",
+                    "progress": 100,
+                    "result": {
+                        "success": True,
+                        "query": user_query,
+                        "sql_query": sql_result.get("sql_query", ""),
+                        "sql_results": sql_output,
+                        "analytics_report": analytics_result,
+                        "visualization_images": visualization_images,
+                        "sql_attempts": sql_result.get("attempt", 0),
+                        "verification_result": sql_result.get("verification_result", "")
+                    }
+                })
+            except Exception as e:
+                # Send error
+                progress_queues[progress_id].put({
+                    "message": f"Error: {str(e)}",
+                    "progress": 100,
+                    "error": str(e)
+                })
+            finally:
+                # Signal completion
+                progress_queues[progress_id].put("DONE")
+
+        # Start workflow in background thread
+        thread = threading.Thread(target=run_workflow)
+        thread.start()
         
         return jsonify({
             "success": True,
-            "query": user_query,
-            "sql_query": sql_result.get("sql_query", ""),
-            "sql_results": sql_output,
-            "analytics_report": analytics_result,
-            "visualization_images": visualization_images,
-            "sql_attempts": sql_result.get("attempt", 0),
-            "verification_result": sql_result.get("verification_result", ""),
+            "message": "Processing started",
             "progress_id": progress_id
         })
 
