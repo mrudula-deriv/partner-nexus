@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import './App.css';
+import ProgressBar from './components/ProgressBar/ProgressBar.tsx';
+import SampleQuestions from './components/SampleQuestions/SampleQuestions.tsx';
 
 const API_BASE_URL = 'http://localhost:5001';
 
@@ -113,6 +115,10 @@ function App() {
   const [analyticsResult, setAnalyticsResult] = useState(null);
   const [activeTab, setActiveTab] = useState('spotlight'); // Changed default to spotlight
   const [error, setError] = useState(null);
+  const [results, setResults] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState('');
+  const eventSourceRef = useRef(null);
 
   // Screener states
   const [screenerLoading, setScreenerLoading] = useState(false);
@@ -168,11 +174,22 @@ function App() {
   const [filterOptions, setFilterOptions] = useState({});
   const [screenerResults, setScreenerResults] = useState(null);
 
+  // Add cleanup function for SSE
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
 
+  const handleSampleQuestionSelect = (selectedQuestion) => {
+    setQuery(selectedQuestion);
+  };
 
-  // All existing functions remain the same
-  const handleSqlTest = async () => {
-    if (!query.trim()) {
+  const handleSqlTest = async (selectedQuery = null) => {
+    const queryToUse = selectedQuery || query;
+    if (!queryToUse.trim()) {
       setError('Please enter a query');
       return;
     }
@@ -180,18 +197,53 @@ function App() {
     setLoading(true);
     setError(null);
     setSqlResult(null);
-    setAnalyticsResult(null);
+    setProgress(0);
+    setProgressMessage('');
 
     try {
+      // Close any existing SSE connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
       const response = await axios.post(`${API_BASE_URL}/sql-agent`, {
-        query: query
+        query: queryToUse
       });
 
-      setSqlResult(response.data);
+      if (response.data.progress_id) {
+        // Set up SSE for progress updates
+        const eventSource = new EventSource(`${API_BASE_URL}/sql-agent/progress/${response.data.progress_id}`);
+        eventSourceRef.current = eventSource;
+
+        eventSource.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.progress === -1) {
+            eventSource.close();
+            setLoading(false);
+            setError('Operation timed out');
+          } else if (data.progress === 100 && data.result) {
+            eventSource.close();
+            setLoading(false);
+            setSqlResult(data.result);
+          } else if (data.error) {
+            eventSource.close();
+            setLoading(false);
+            setError(data.error);
+          } else {
+            setProgress(data.progress);
+            setProgressMessage(data.message);
+          }
+        };
+
+        eventSource.onerror = () => {
+          eventSource.close();
+          setLoading(false);
+          setError('Lost connection to server');
+        };
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to process SQL query');
-    } finally {
       setLoading(false);
+      setError(err.response?.data?.error || err.message);
     }
   };
 
@@ -207,7 +259,7 @@ function App() {
     setAnalyticsResult(null);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/analytics-agent`, {
+      const response = await axios.post(`${API_BASE_URL}/sql-analytics`, {
         query: query
       });
 
@@ -665,6 +717,9 @@ function App() {
               </div>
               
               <div className="card-body">
+                {/* Sample Questions */}
+                <SampleQuestions onQuestionSelect={handleSampleQuestionSelect} />
+                
                 <div className="form-group">
                   <textarea
                     value={query}
@@ -677,7 +732,7 @@ function App() {
 
                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <button
-                    onClick={handleSqlTest}
+                    onClick={() => handleSqlTest()}
                     disabled={loading}
                     className="btn btn-primary"
                     style={{ opacity: loading ? 0.7 : 1 }}
@@ -721,6 +776,10 @@ function App() {
                     Clear Results
                   </button>
                 </div>
+
+                {loading && !analyticsResult && (
+                  <ProgressBar progress={progress} message={progressMessage} />
+                )}
 
                 {error && (
                   <div style={{
