@@ -896,7 +896,11 @@ What is the most appropriate chart type?"""
             if len(cat_df) > 1:
                 grouped = cat_df.groupby(cat_col)[num_col].sum().sort_values(ascending=False)
                 
-                if len(grouped) > 0 and len(grouped) <= 20:
+                if len(grouped) > 0:
+                    # Limit to top 20 for readability
+                    if len(grouped) > 20:
+                        logger.info(f"Too many groups ({len(grouped)}), limiting to top 20")
+                        grouped = grouped.head(20)
                     fig, ax = plt.subplots(figsize=(12, 6))
                     bars = ax.bar(range(len(grouped)), grouped.values, color=plt.cm.Set3(np.linspace(0, 1, len(grouped))))
                     
@@ -928,6 +932,8 @@ What is the most appropriate chart type?"""
                         "type": "bar_chart",
                         "data": image_base64
                     })
+            else:
+                logger.warning(f"Cannot create bar chart: cat_df length {len(cat_df)} <= 1")
         
         elif chart_type in ["line", "multi_line"] and numeric_columns:
             # Check if we have comparison data (multiple series)
@@ -1212,7 +1218,7 @@ workflow.set_entry_point("parse_data_node")
 app = workflow.compile()
 
 # Helper function to run analytics on SQL results
-def analyze_sql_results(original_query: str, sql_results: str, progress_callback: Optional[ProgressCallback] = None) -> str:
+def analyze_sql_results(original_query: str, sql_results: str, progress_callback: Optional[ProgressCallback] = None) -> dict:
     """
     Main function to run analytics on SQL results.
     
@@ -1222,7 +1228,7 @@ def analyze_sql_results(original_query: str, sql_results: str, progress_callback
         progress_callback: Optional callback for progress updates
     
     Returns:
-        Formatted analytics report
+        Dict containing formatted analytics report and visualization images
     """
     logger.info(f"\n=== Starting Analytics for Query: {original_query} ===")
     
@@ -1269,8 +1275,14 @@ def analyze_sql_results(original_query: str, sql_results: str, progress_callback
         result = app.invoke(initial_state, config={"recursion_limit": 20})
         
         logger.info("Analytics workflow completed successfully")
-        return result["formatted_response"]
+        return {
+            "formatted_response": result["formatted_response"],
+            "visualization_images": result["visualization_images"]
+        }
     except Exception as e:
         error_msg = f"Analytics workflow failed: {str(e)}"
         logger.error(error_msg)
-        return f"❌ Analytics Error: {error_msg}" 
+        return {
+            "formatted_response": f"❌ Analytics Error: {error_msg}",
+            "visualization_images": []
+        } 

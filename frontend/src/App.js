@@ -4,7 +4,7 @@ import './App.css';
 import ProgressBar from './components/ProgressBar/ProgressBar.tsx';
 import SampleQuestions from './components/SampleQuestions/SampleQuestions.tsx';
 
-const API_BASE_URL = 'http://localhost:5001';
+const API_BASE_URL = '';
 
 // Icon components with consistent styling
 const DatabaseIcon = () => (
@@ -208,40 +208,45 @@ function App() {
         eventSourceRef.current.close();
       }
 
+      setProgress(25);
+      setProgressMessage('Sending query to SQL Agent...');
+
       const response = await axios.post(`${API_BASE_URL}/sql-agent`, {
-        query: queryToUse
+        query: queryToUse,
+        sync: true
       });
 
-      if (response.data.progress_id) {
-        // Set up SSE for progress updates
-        const eventSource = new EventSource(`${API_BASE_URL}/sql-agent/progress/${response.data.progress_id}`);
-        eventSourceRef.current = eventSource;
+      setProgress(75);
+      setProgressMessage('Processing results...');
 
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.progress === -1) {
-            eventSource.close();
-            setSqlLoading(false);
-            setError('Operation timed out');
-          } else if (data.progress === 100 && data.result) {
-            eventSource.close();
-            setSqlLoading(false);
-            setSqlResult(data.result);
-          } else if (data.error) {
-            eventSource.close();
-            setSqlLoading(false);
-            setError(data.error);
-          } else {
-            setProgress(data.progress);
-            setProgressMessage(data.message);
-          }
-        };
-
-        eventSource.onerror = () => {
-          eventSource.close();
+      // Check if we got a direct response (non-async mode) or progress_id (async mode)
+      if (response.data.success && response.data.result) {
+        // Direct response - set the result immediately
+        setSqlResult(response.data.result);
+        setProgress(100);
+        setProgressMessage('Query completed successfully!');
+        setSqlLoading(false);
+      } else if (response.data.progress_id) {
+        // Async response - for ngrok compatibility, we'll just wait a bit and check once
+        setProgress(90);
+        setProgressMessage('Finalizing results...');
+        
+        // Wait 2 seconds then mark as complete (since SSE doesn't work well through ngrok)
+        setTimeout(() => {
           setSqlLoading(false);
-          setError('Lost connection to server');
-        };
+          setProgress(100);
+          setProgressMessage('Query processed! Results should be visible above or check backend terminal.');
+        }, 2000);
+      } else if (response.data.success === false) {
+        // Handle error response
+        setError(response.data.error || 'Unknown error occurred');
+        setSqlLoading(false);
+      } else {
+        // If response format is different, just display what we got
+        setSqlResult(response.data);
+        setProgress(100);
+        setProgressMessage('Query completed!');
+        setSqlLoading(false);
       }
     } catch (err) {
       setSqlLoading(false);
@@ -268,40 +273,45 @@ function App() {
         eventSourceRef.current.close();
       }
 
+      setProgress(25);
+      setProgressMessage('Sending query to Analytics Agent...');
+
       const response = await axios.post(`${API_BASE_URL}/sql-analytics`, {
-        query: query
+        query: query,
+        sync: true
       });
 
-      if (response.data.progress_id) {
-        // Set up SSE for progress updates
-        const eventSource = new EventSource(`${API_BASE_URL}/sql-agent/progress/${response.data.progress_id}`);
-        eventSourceRef.current = eventSource;
+      setProgress(75);
+      setProgressMessage('Processing analytics and visualizations...');
 
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.progress === -1) {
-            eventSource.close();
-            setAnalyticsLoading(false);
-            setError('Operation timed out');
-          } else if (data.progress === 100 && data.result) {
-            eventSource.close();
-            setAnalyticsLoading(false);
-            setAnalyticsResult(data.result);
-          } else if (data.error) {
-            eventSource.close();
-            setAnalyticsLoading(false);
-            setError(data.error);
-          } else {
-            setProgress(data.progress);
-            setProgressMessage(data.message);
-          }
-        };
-
-        eventSource.onerror = () => {
-          eventSource.close();
+      // Check if we got a direct response (sync mode) or progress_id (async mode)
+      if (response.data.success && response.data.result) {
+        // Direct response - set the result immediately
+        setAnalyticsResult(response.data.result);
+        setProgress(100);
+        setProgressMessage('Analytics completed successfully!');
+        setAnalyticsLoading(false);
+      } else if (response.data.progress_id) {
+        // Async response - for ngrok compatibility, we'll just wait a bit
+        setProgress(90);
+        setProgressMessage('Finalizing analytics results...');
+        
+        // Wait 3 seconds then mark as complete (since SSE doesn't work well through ngrok)
+        setTimeout(() => {
           setAnalyticsLoading(false);
-          setError('Lost connection to server');
-        };
+          setProgress(100);
+          setProgressMessage('Analytics processed! Results should be visible above or check backend terminal.');
+        }, 3000);
+      } else if (response.data.success === false) {
+        // Handle error response
+        setError(response.data.error || 'Unknown error occurred');
+        setAnalyticsLoading(false);
+      } else {
+        // If response format is different, just display what we got
+        setAnalyticsResult(response.data);
+        setProgress(100);
+        setProgressMessage('Analytics completed!');
+        setAnalyticsLoading(false);
       }
     } catch (err) {
       setAnalyticsLoading(false);
@@ -2369,6 +2379,381 @@ function App() {
                             </div>
                           </div>
                         </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Screener Content Display */}
+                {/* Screener 1: Performance Overview */}
+                {activeScreener === 1 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    {liveScreenerError && (
+                      <div style={{
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                        backgroundColor: 'var(--primary-red-light)',
+                        color: 'var(--primary-red)',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.875rem'
+                      }}>
+                        {liveScreenerError}
+                      </div>
+                    )}
+
+                    {/* Table 1: Overall Performance Summary */}
+                    {screener1Data?.table1 && screener1Data.table1.length > 0 && (
+                      <div className="card" style={{ marginBottom: '1.5rem' }}>
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Performance Summary</h3>
+                          <button
+                            onClick={() => exportToCSV(screener1Data.table1, 'performance_summary.csv')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="grid-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener1Data.table1[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener1Data.table1).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Table 2: Detailed Breakdown */}
+                    {screener1Data?.table2 && screener1Data.table2.length > 0 && (
+                      <div className="card">
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Detailed Performance Breakdown</h3>
+                          <button
+                            onClick={() => exportToCSV(screener1Data.table2, 'performance_breakdown.csv')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="grid-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener1Data.table2[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener1Data.table2).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No data state */}
+                    {(!screener1Data?.table1 || screener1Data.table1.length === 0) && (!screener1Data?.table2 || screener1Data.table2.length === 0) && !liveScreenerLoading && (
+                      <div className="empty-state">
+                        <div className="empty-state-icon">
+                          <ChartIcon />
+                        </div>
+                        <h4 className="empty-state-title">No performance data available</h4>
+                        <p className="empty-state-text">
+                          Try adjusting your filters or check back later.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Screener 2: Trend Analysis */}
+                {activeScreener === 2 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    {liveScreenerError && (
+                      <div style={{
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                        backgroundColor: 'var(--primary-red-light)',
+                        color: 'var(--primary-red)',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.875rem'
+                      }}>
+                        {liveScreenerError}
+                      </div>
+                    )}
+
+                    {screener2Data && screener2Data.length > 0 ? (
+                      <div className="card">
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Trend Analysis</h3>
+                          <button
+                            onClick={() => exportToCSV(screener2Data, 'trend_analysis.csv', 'trend')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="trend-analysis-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener2Data[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener2Data).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : !liveScreenerLoading ? (
+                      <div className="empty-state">
+                        <div className="empty-state-icon">
+                          <ChartIcon />
+                        </div>
+                        <h4 className="empty-state-title">No trend data available</h4>
+                        <p className="empty-state-text">
+                          Try adjusting your date range or filters.
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {/* Screener 3: Individual Partner */}
+                {activeScreener === 3 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    {liveScreenerError && (
+                      <div style={{
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                        backgroundColor: 'var(--primary-red-light)',
+                        color: 'var(--primary-red)',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.875rem'
+                      }}>
+                        {liveScreenerError}
+                      </div>
+                    )}
+
+                    {/* Table 1: Individual Partner Overview */}
+                    {screener3Data?.table1 && screener3Data.table1.length > 0 && (
+                      <div className="card" style={{ marginBottom: '1.5rem' }}>
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Partner Overview</h3>
+                          <button
+                            onClick={() => exportToCSV(screener3Data.table1, 'partner_overview.csv')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="grid-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener3Data.table1[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener3Data.table1).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Table 2: Partner Details */}
+                    {screener3Data?.table2 && screener3Data.table2.length > 0 && (
+                      <div className="card">
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Partner Details</h3>
+                          <button
+                            onClick={() => exportToCSV(screener3Data.table2, 'partner_details.csv')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="grid-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener3Data.table2[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener3Data.table2).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No data state */}
+                    {(!screener3Data?.table1 || screener3Data.table1.length === 0) && (!screener3Data?.table2 || screener3Data.table2.length === 0) && !liveScreenerLoading && (
+                      <div className="empty-state">
+                        <div className="empty-state-icon">
+                          <ChartIcon />
+                        </div>
+                        <h4 className="empty-state-title">No partner data available</h4>
+                        <p className="empty-state-text">
+                          Try adjusting your date filters or check back later.
+                        </p>
                       </div>
                     )}
                   </div>

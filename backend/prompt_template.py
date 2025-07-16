@@ -30,3 +30,4 @@ Schema considerations:
 - Ensure column names and table names match exactly with the metadata
 - Consider indexes that might affect query performance
 - Use appropriate table aliases for readability
+"""

@@ -14,7 +14,7 @@ const SampleQuestions: React.FC<SampleQuestionsProps> = ({ onQuestionSelect }) =
     {
       id: 2,
       label: "February Applications",
-      question: "What is the number of applications from Feb 2025?"
+      question: "What is the number of partner applications from Feb 2025?"
     },
     {
       id: 3,
