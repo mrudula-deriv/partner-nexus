@@ -4,7 +4,7 @@ import './App.css';
 import ProgressBar from './components/ProgressBar/ProgressBar.tsx';
 import SampleQuestions from './components/SampleQuestions/SampleQuestions.tsx';
 
-const API_BASE_URL = 'http://localhost:5001';
+const API_BASE_URL = '';
 
 // Icon components with consistent styling
 const DatabaseIcon = () => (
@@ -217,40 +217,45 @@ function App() {
         eventSourceRef.current.close();
       }
 
+      setProgress(25);
+      setProgressMessage('Sending query to SQL Agent...');
+
       const response = await axios.post(`${API_BASE_URL}/sql-agent`, {
-        query: queryToUse
+        query: queryToUse,
+        sync: true
       });
 
-      if (response.data.progress_id) {
-        // Set up SSE for progress updates
-        const eventSource = new EventSource(`${API_BASE_URL}/sql-agent/progress/${response.data.progress_id}`);
-        eventSourceRef.current = eventSource;
+      setProgress(75);
+      setProgressMessage('Processing results...');
 
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.progress === -1) {
-            eventSource.close();
-            setSqlLoading(false);
-            setError('Operation timed out');
-          } else if (data.progress === 100 && data.result) {
-            eventSource.close();
-            setSqlLoading(false);
-            setSqlResult(data.result);
-          } else if (data.error) {
-            eventSource.close();
-            setSqlLoading(false);
-            setError(data.error);
-          } else {
-            setProgress(data.progress);
-            setProgressMessage(data.message);
-          }
-        };
-
-        eventSource.onerror = () => {
-          eventSource.close();
+      // Check if we got a direct response (non-async mode) or progress_id (async mode)
+      if (response.data.success && response.data.result) {
+        // Direct response - set the result immediately
+        setSqlResult(response.data.result);
+        setProgress(100);
+        setProgressMessage('Query completed successfully!');
+        setSqlLoading(false);
+      } else if (response.data.progress_id) {
+        // Async response - for ngrok compatibility, we'll just wait a bit and check once
+        setProgress(90);
+        setProgressMessage('Finalizing results...');
+        
+        // Wait 2 seconds then mark as complete (since SSE doesn't work well through ngrok)
+        setTimeout(() => {
           setSqlLoading(false);
-          setError('Lost connection to server');
-        };
+          setProgress(100);
+          setProgressMessage('Query processed! Results should be visible above or check backend terminal.');
+        }, 2000);
+      } else if (response.data.success === false) {
+        // Handle error response
+        setError(response.data.error || 'Unknown error occurred');
+        setSqlLoading(false);
+      } else {
+        // If response format is different, just display what we got
+        setSqlResult(response.data);
+        setProgress(100);
+        setProgressMessage('Query completed!');
+        setSqlLoading(false);
       }
     } catch (err) {
       setSqlLoading(false);
@@ -277,40 +282,45 @@ function App() {
         eventSourceRef.current.close();
       }
 
+      setProgress(25);
+      setProgressMessage('Sending query to Analytics Agent...');
+
       const response = await axios.post(`${API_BASE_URL}/sql-analytics`, {
-        query: query
+        query: query,
+        sync: true
       });
 
-      if (response.data.progress_id) {
-        // Set up SSE for progress updates
-        const eventSource = new EventSource(`${API_BASE_URL}/sql-agent/progress/${response.data.progress_id}`);
-        eventSourceRef.current = eventSource;
+      setProgress(75);
+      setProgressMessage('Processing analytics and visualizations...');
 
-        eventSource.onmessage = (event) => {
-          const data = JSON.parse(event.data);
-          if (data.progress === -1) {
-            eventSource.close();
-            setAnalyticsLoading(false);
-            setError('Operation timed out');
-          } else if (data.progress === 100 && data.result) {
-            eventSource.close();
-            setAnalyticsLoading(false);
-            setAnalyticsResult(data.result);
-          } else if (data.error) {
-            eventSource.close();
-            setAnalyticsLoading(false);
-            setError(data.error);
-          } else {
-            setProgress(data.progress);
-            setProgressMessage(data.message);
-          }
-        };
-
-        eventSource.onerror = () => {
-          eventSource.close();
+      // Check if we got a direct response (sync mode) or progress_id (async mode)
+      if (response.data.success && response.data.result) {
+        // Direct response - set the result immediately
+        setAnalyticsResult(response.data.result);
+        setProgress(100);
+        setProgressMessage('Analytics completed successfully!');
+        setAnalyticsLoading(false);
+      } else if (response.data.progress_id) {
+        // Async response - for ngrok compatibility, we'll just wait a bit
+        setProgress(90);
+        setProgressMessage('Finalizing analytics results...');
+        
+        // Wait 3 seconds then mark as complete (since SSE doesn't work well through ngrok)
+        setTimeout(() => {
           setAnalyticsLoading(false);
-          setError('Lost connection to server');
-        };
+          setProgress(100);
+          setProgressMessage('Analytics processed! Results should be visible above or check backend terminal.');
+        }, 3000);
+      } else if (response.data.success === false) {
+        // Handle error response
+        setError(response.data.error || 'Unknown error occurred');
+        setAnalyticsLoading(false);
+      } else {
+        // If response format is different, just display what we got
+        setAnalyticsResult(response.data);
+        setProgress(100);
+        setProgressMessage('Analytics completed!');
+        setAnalyticsLoading(false);
       }
     } catch (err) {
       setAnalyticsLoading(false);

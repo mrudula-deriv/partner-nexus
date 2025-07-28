@@ -105,6 +105,7 @@ def test_sql_agent():
     try:
         data = request.json
         user_query = data.get('query', '')
+        sync_mode = data.get('sync', True)  # Default to sync for ngrok compatibility
         
         if not user_query:
             return jsonify({
@@ -112,71 +113,116 @@ def test_sql_agent():
                 "error": "No query provided"
             }), 400
 
-        # Generate a progress ID for this request
-        progress_id = generate_progress_id()
-        progress_queues[progress_id] = queue.Queue()
+        if sync_mode:
+            # Synchronous mode - return results immediately
+            def progress_callback(message: str, progress: int):
+                # In sync mode, we just log progress
+                print(f"Progress: {progress}% - {message}")
 
-        def progress_callback(message: str, progress: int):
-            progress_queues[progress_id].put({
-                "message": message,
-                "progress": progress
-            })
+            # Create workflow with progress callback - independent mode
+            workflow = create_workflow(progress_callback, is_analytics_workflow=False)
+            
+            # Initialize state
+            initial_state = {
+                "prompt": user_query,
+                "sql_query": "",
+                "verification_result": "",
+                "matches_intent": False,
+                "results": "",
+                "error": "",
+                "attempt": 0,
+                "syntax_validation_passed": False,
+                "explain_output": "",
+                "improved_prompt": "",
+                "error_message": "",
+                "progress": 0
+            }
 
-        # Create workflow with progress callback - independent mode
-        workflow = create_workflow(progress_callback, is_analytics_workflow=False)
-        
-        # Initialize state
-        initial_state = {
-            "prompt": user_query,
-            "sql_query": "",
-            "verification_result": "",
-            "matches_intent": False,
-            "results": "",
-            "error": "",
-            "attempt": 0,
-            "syntax_validation_passed": False,
-            "explain_output": "",
-            "improved_prompt": "",
-            "error_message": "",
-            "progress": 0
-        }
-
-        # Run workflow in a background thread
-        def run_workflow():
             try:
                 result = workflow.invoke(initial_state, config={"recursion_limit": 50})
-                # Send final result
-                progress_queues[progress_id].put({
-                    "message": "Completed",
-                    "progress": 100,
+                return jsonify({
+                    "success": True,
                     "result": {
                         "success": True,
+                        "query": user_query,
                         "results": result["results"],
                         "sql_query": result.get("sql_query", ""),
-                        "attempt": result.get("attempt", 0),
+                        "attempts": result.get("attempt", 0),
                         "verification_result": result.get("verification_result", "")
                     }
                 })
             except Exception as e:
-                # Send error
-                progress_queues[progress_id].put({
-                    "message": f"Error: {str(e)}",
-                    "progress": 100,
+                return jsonify({
+                    "success": False,
                     "error": str(e)
-                })
-            finally:
-                # Signal completion
-                progress_queues[progress_id].put("DONE")
+                }), 500
+        else:
+            # Asynchronous mode with SSE (original behavior)
+            # Generate a progress ID for this request
+            progress_id = generate_progress_id()
+            progress_queues[progress_id] = queue.Queue()
 
-        # Start workflow in background thread
-        thread = threading.Thread(target=run_workflow)
-        thread.start()
-        
-        return jsonify({
-            "success": True,
-            "message": "Processing started",
-            "progress_id": progress_id
-        })
+            def progress_callback(message: str, progress: int):
+                progress_queues[progress_id].put({
+                    "message": message,
+                    "progress": progress
+                })
+
+            # Create workflow with progress callback - independent mode
+            workflow = create_workflow(progress_callback, is_analytics_workflow=False)
+            
+            # Initialize state
+            initial_state = {
+                "prompt": user_query,
+                "sql_query": "",
+                "verification_result": "",
+                "matches_intent": False,
+                "results": "",
+                "error": "",
+                "attempt": 0,
+                "syntax_validation_passed": False,
+                "explain_output": "",
+                "improved_prompt": "",
+                "error_message": "",
+                "progress": 0
+            }
+
+            # Run workflow in a background thread
+            def run_workflow():
+                try:
+                    result = workflow.invoke(initial_state, config={"recursion_limit": 50})
+                    # Send final result
+                    progress_queues[progress_id].put({
+                        "message": "Completed",
+                        "progress": 100,
+                        "result": {
+                            "success": True,
+                            "results": result["results"],
+                            "sql_query": result.get("sql_query", ""),
+                            "attempt": result.get("attempt", 0),
+                            "verification_result": result.get("verification_result", "")
+                        }
+                    })
+                except Exception as e:
+                    # Send error
+                    progress_queues[progress_id].put({
+                        "message": f"Error: {str(e)}",
+                        "progress": 100,
+                        "error": str(e)
+                    })
+                finally:
+                    # Signal completion
+                    progress_queues[progress_id].put("DONE")
+
+            # Start workflow in background thread
+            thread = threading.Thread(target=run_workflow)
+            thread.start()
+            
+            return jsonify({
+                "success": True,
+                "message": "Processing started",
+                "progress_id": progress_id
+            })
 
     except Exception as e:
         traceback.print_exc()
@@ -191,6 +237,7 @@ def test_sql_analytics():
     try:
         data = request.json
         user_query = data.get('query', '')
+        sync_mode = data.get('sync', True)  # Default to sync for ngrok compatibility
         
         if not user_query:
             return jsonify({
@@ -198,23 +245,16 @@ def test_sql_analytics():
                 "error": "No query provided"
             }), 400
 
-        # Generate a progress ID for this request
-        progress_id = generate_progress_id()
-        progress_queues[progress_id] = queue.Queue()
+        if sync_mode:
+            # Synchronous mode - return results immediately
+            def sql_progress_callback(message: str, progress: int):
+                # In sync mode, we just log progress
+                print(f"SQL Progress: {progress}% - {message}")
 
-        def sql_progress_callback(message: str, progress: int):
-            progress_queues[progress_id].put({
-                "message": message,
-                "progress": progress
-            })
+            def analytics_progress_callback(message: str, progress: int):
+                # In sync mode, we just log progress
+                print(f"Analytics Progress: {progress}% - {message}")
 
-        def analytics_progress_callback(message: str, progress: int):
-            progress_queues[progress_id].put({
-                "message": message,
-                "progress": progress
-            })
-
-        def run_workflow():
             try:
                 # Step 1: Run SQL Agent (0-50% progress)
                 logger.info("Step 1: Running SQL Agent...")
@@ -240,58 +280,142 @@ def test_sql_analytics():
                 
                 # Check if SQL agent failed
                 if sql_result.get("error"):
-                    progress_queues[progress_id].put({
-                        "message": f"SQL Agent failed: {sql_result['error']}",
-                        "progress": 50,
+                    return jsonify({
+                        "success": False,
                         "error": sql_result['error']
-                    })
-                    progress_queues[progress_id].put("DONE")
-                    return
+                    }), 500
                 
                 # Step 2: Run Analytics Agent (50-100% progress)
                 logger.info("Step 2: Running Analytics Agent...")
                 analytics_result = analyze_sql_results(user_query, sql_output, analytics_progress_callback)
                 
-                # Extract visualization images from analytics result if available
-                visualization_images = []
+                # Extract visualization images and formatted response from analytics result
                 if isinstance(analytics_result, dict):
-                    visualization_images = analytics_result.pop("visualization_images", [])
+                    visualization_images = analytics_result.get("visualization_images", [])
+                    analytics_formatted_response = analytics_result.get("formatted_response", str(analytics_result))
+                else:
+                    # Fallback for old string format
+                    visualization_images = []
+                    analytics_formatted_response = str(analytics_result)
                 
-                # Send final result
-                progress_queues[progress_id].put({
-                    "message": "Completed",
-                    "progress": 100,
+                return jsonify({
+                    "success": True,
                     "result": {
                         "success": True,
                         "query": user_query,
                         "sql_query": sql_result.get("sql_query", ""),
                         "sql_results": sql_output,
-                        "analytics_report": analytics_result,
+                        "analytics_report": analytics_formatted_response,
                         "visualization_images": visualization_images,
                         "sql_attempts": sql_result.get("attempt", 0),
                         "verification_result": sql_result.get("verification_result", "")
                     }
                 })
             except Exception as e:
-                # Send error
-                progress_queues[progress_id].put({
-                    "message": f"Error: {str(e)}",
-                    "progress": 100,
+                return jsonify({
+                    "success": False,
                     "error": str(e)
-                })
-            finally:
-                # Signal completion
-                progress_queues[progress_id].put("DONE")
+                }), 500
+        else:
+            # Asynchronous mode with SSE (original behavior)
+            # Generate a progress ID for this request
+            progress_id = generate_progress_id()
+            progress_queues[progress_id] = queue.Queue()
 
-        # Start workflow in background thread
-        thread = threading.Thread(target=run_workflow)
-        thread.start()
-        
-        return jsonify({
-            "success": True,
-            "message": "Processing started",
-            "progress_id": progress_id
-        })
+            def sql_progress_callback(message: str, progress: int):
+                progress_queues[progress_id].put({
+                    "message": message,
+                    "progress": progress
+                })
+
+            def analytics_progress_callback(message: str, progress: int):
+                progress_queues[progress_id].put({
+                    "message": message,
+                    "progress": progress
+                })
+
+            def run_workflow():
+                try:
+                    # Step 1: Run SQL Agent (0-50% progress)
+                    logger.info("Step 1: Running SQL Agent...")
+                    workflow = create_workflow(sql_progress_callback, is_analytics_workflow=True)
+                    
+                    sql_initial_state = {
+                        "prompt": user_query,
+                        "sql_query": "",
+                        "verification_result": "",
+                        "matches_intent": False,
+                        "results": "",
+                        "error": "",
+                        "attempt": 0,
+                        "syntax_validation_passed": False,
+                        "explain_output": "",
+                        "improved_prompt": "",
+                        "error_message": "",
+                        "progress": 0
+                    }
+                    
+                    sql_result = workflow.invoke(sql_initial_state, config={"recursion_limit": 50})
+                    sql_output = sql_result["results"]
+                    
+                    # Check if SQL agent failed
+                    if sql_result.get("error"):
+                        progress_queues[progress_id].put({
+                            "message": f"SQL Agent failed: {sql_result['error']}",
+                            "progress": 50,
+                            "error": sql_result['error']
+                        })
+                        progress_queues[progress_id].put("DONE")
+                        return
+                    
+                    # Step 2: Run Analytics Agent (50-100% progress)
+                    logger.info("Step 2: Running Analytics Agent...")
+                    analytics_result = analyze_sql_results(user_query, sql_output, analytics_progress_callback)
+                    
+                    # Extract visualization images and formatted response from analytics result
+                    if isinstance(analytics_result, dict):
+                        visualization_images = analytics_result.get("visualization_images", [])
+                        analytics_formatted_response = analytics_result.get("formatted_response", str(analytics_result))
+                    else:
+                        # Fallback for old string format
+                        visualization_images = []
+                        analytics_formatted_response = str(analytics_result)
+                    
+                    # Send final result
+                    progress_queues[progress_id].put({
+                        "message": "Completed",
+                        "progress": 100,
+                        "result": {
+                            "success": True,
+                            "query": user_query,
+                            "sql_query": sql_result.get("sql_query", ""),
+                            "sql_results": sql_output,
+                            "analytics_report": analytics_formatted_response,
+                            "visualization_images": visualization_images,
+                            "sql_attempts": sql_result.get("attempt", 0),
+                            "verification_result": sql_result.get("verification_result", "")
+                        }
+                    })
+                except Exception as e:
+                    # Send error
+                    progress_queues[progress_id].put({
+                        "message": f"Error: {str(e)}",
+                        "progress": 100,
+                        "error": str(e)
+                    })
+                finally:
+                    # Signal completion
+                    progress_queues[progress_id].put("DONE")
+
+            # Start workflow in background thread
+            thread = threading.Thread(target=run_workflow)
+            thread.start()
+            
+            return jsonify({
+                "success": True,
+                "message": "Processing started",
+                "progress_id": progress_id
+            })
 
     except Exception as e:
         traceback.print_exc()
@@ -892,7 +1016,32 @@ def get_screener4_data():
                 if cohort_type == 'reverse':
                     # Reverse cohort: Group by activation month, show when they joined
                     base_query = f"""
-                    WITH cohort_data AS (
+                    WITH partner_plans AS (
+                        SELECT 
+                            partner_id,
+                            CASE
+                                WHEN is_master_plan THEN 'Master'
+                                WHEN is_revshare_plan THEN 'Revenue Share'
+                                WHEN is_turnover_plan THEN 'Turnover'
+                                WHEN is_cpa_plan THEN 'CPA'
+                                WHEN is_ib_plan THEN 'IB'
+                                ELSE 'Unknown'
+                            END as plan_type,
+                            partner_region,
+                            partner_country,
+                            partner_platform,
+                            aff_type,
+                            partner_level,
+                            attended_onboarding_event,
+                            first_client_joined_date,
+                            first_client_deposit_date,
+                            first_client_trade_date,
+                            first_earning_date,
+                            date_joined
+                        FROM partner.partner_info
+                        WHERE is_internal = FALSE
+                    ),
+                    cohort_data AS (
                         SELECT 
                             DATE_TRUNC('month', {milestone_col}) as cohort_month,
                             COALESCE(partner_region, 'Unknown') as region,
@@ -907,14 +1056,38 @@ def get_screener4_data():
                             COUNT(DISTINCT CASE WHEN date_joined >= {milestone_col} - INTERVAL '90 days' 
                                   AND date_joined < {milestone_col} - INTERVAL '60 days'
                                   THEN partner_id END) as m3_count
-                        FROM partner.partner_info
-                        WHERE is_internal = FALSE
-                        AND {date_condition}
+                        FROM partner_plans
+                        WHERE {date_condition}
                     """
                 else:
                     # Original forward cohort logic
                     base_query = f"""
-                    WITH cohort_data AS (
+                    WITH partner_plans AS (
+                        SELECT 
+                            partner_id,
+                            CASE
+                                WHEN is_master_plan THEN 'Master'
+                                WHEN is_revshare_plan THEN 'Revenue Share'
+                                WHEN is_turnover_plan THEN 'Turnover'
+                                WHEN is_cpa_plan THEN 'CPA'
+                                WHEN is_ib_plan THEN 'IB'
+                                ELSE 'Unknown'
+                            END as plan_type,
+                            partner_region,
+                            partner_country,
+                            partner_platform,
+                            aff_type,
+                            partner_level,
+                            attended_onboarding_event,
+                            first_client_joined_date,
+                            first_client_deposit_date,
+                            first_client_trade_date,
+                            first_earning_date,
+                            date_joined
+                        FROM partner.partner_info
+                        WHERE is_internal = FALSE
+                    ),
+                    cohort_data AS (
                         SELECT 
                             DATE_TRUNC('month', date_joined) as cohort_month,
                             COALESCE(partner_region, 'Unknown') as region,
@@ -930,9 +1103,8 @@ def get_screener4_data():
                             COUNT(DISTINCT CASE WHEN {milestone_col} IS NOT NULL 
                                   AND {milestone_col} <= date_joined + INTERVAL '90 days' 
                                   THEN partner_id END) as m3_count
-                        FROM partner.partner_info
-                        WHERE is_internal = FALSE
-                        AND {date_condition}
+                        FROM partner_plans
+                        WHERE {date_condition}
                     """
                 
                 # Add filters
