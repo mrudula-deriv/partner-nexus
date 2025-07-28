@@ -1,37 +1,17 @@
-import psycopg2
+from config import settings
+from utils import get_openai_client, get_db_connection
 from psycopg2.extras import RealDictCursor
-from dotenv import load_dotenv
 import os
-import logging
+from logging_config import LoggingConfig
 from datetime import datetime, timedelta
 import json
 from typing import Dict, List, Any, Tuple
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
-# Load environment variables
-load_dotenv()
-
 # Set up logging
-logger = logging.getLogger(__name__)
+logger = LoggingConfig('spotlight_dashboard').setup_logger()
 
-# Database configuration
-db_params = {
-    'host': os.getenv('host'),
-    'port': os.getenv('port'),
-    'database': os.getenv('dbname'),
-    'user': os.getenv('user'),
-    'password': os.getenv('password')
-}
-
-# OpenAI configuration for insights
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-API_BASE_URL = os.getenv('API_BASE_URL')
-OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME')
-
-def get_db_connection():
-    """Create and return a database connection"""
-    return psycopg2.connect(**db_params)
 
 def get_spotlight_dashboard_data(date_range: int = 90) -> Dict[str, Any]:
     """Get comprehensive spotlight dashboard data with all insights
@@ -410,14 +390,9 @@ def get_spotlight_dashboard_data(date_range: int = 90) -> Dict[str, Any]:
             
             # Generate AI insights if API key is available
             ai_insights = None
-            if OPENAI_API_KEY and API_BASE_URL and OPENAI_MODEL_NAME:
+            if settings.openai.api_key and settings.openai.base_url and settings.openai.model_name:
                 try:
-                    llm = ChatOpenAI(
-                        api_key=OPENAI_API_KEY,
-                        base_url=API_BASE_URL,
-                        model=OPENAI_MODEL_NAME,
-                        temperature=0.7
-                    )
+                    llm = get_openai_client()
                     
                     # Prepare comprehensive data summary for AI
                     data_summary = f"""

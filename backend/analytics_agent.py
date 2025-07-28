@@ -1,69 +1,28 @@
 import pandas as pd
 import numpy as np
-from dotenv import load_dotenv
-import os
-import json
+
 import matplotlib
 matplotlib.use('Agg')  # Use non-GUI backend for headless operation
 import matplotlib.pyplot as plt
 import seaborn as sns
-from langchain_openai import ChatOpenAI
+
 from langchain_core.messages import SystemMessage, HumanMessage
-from typing import TypedDict, Annotated, Sequence, Dict, Any, List, Optional, Callable
+from typing import TypedDict, Dict, Any, List, Optional
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
-import logging
-from logging.handlers import RotatingFileHandler
-import datetime
+from logging_config import LoggingConfig
 from scipy import stats as scipy_stats  # Renamed to avoid conflict
-import warnings
-import base64
+from progress_manager import ProgressManager, AnalyticsProgressStages, ProgressCallback
+
+import warnings, base64, json, datetime
 from io import BytesIO
+
+from utils import get_openai_client
 warnings.filterwarnings('ignore')
 
-# Progress callback type
-ProgressCallback = Callable[[str, int], None]
-
-# Create logs directory if it doesn't exist
-if not os.path.exists('logs'):
-    os.makedirs('logs')
-
-# Set up logging configuration
-def setup_logger():
-    """Set up a logger with file and console handlers."""
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    
-    # File handler with rotation
-    file_handler = RotatingFileHandler(
-        'logs/analytics_agent.log',
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5
-    )
-    file_handler.setFormatter(formatter)
-    
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    
-    # Create logger
-    logger = logging.getLogger('analytics_agent')
-    logger.setLevel(logging.INFO)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
-
 # Create logger
-logger = setup_logger()
-
-# Load environment variables from .env
-load_dotenv()
-
-# OpenAI configuration from environment variables
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-API_BASE_URL = os.getenv('API_BASE_URL')
-OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME')
+logger = LoggingConfig('analytics_agent').setup_logger()
 
 # Define the state type
 class AnalyticsState(TypedDict):
@@ -78,10 +37,10 @@ class AnalyticsState(TypedDict):
     formatted_response: str
     error: str
 
-def parse_data_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
+def parse_data_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None) -> AnalyticsState:
     """Parse SQL results into structured data for analysis."""
-    if progress_callback:
-        progress_callback("Parsing SQL results...", 60)
+    if progress_manager:
+        progress_manager.update_progress("Parsing SQL results...", AnalyticsProgressStages.PARSE_DATA, progress_callback)
     
     logger.info("\n=== Parsing Data ===")
     logger.info(f"Original query: {state['original_query']}")
@@ -238,10 +197,10 @@ def parse_data_node(state: AnalyticsState, progress_callback: Optional[ProgressC
         logger.error(error_msg)
         return {"error": error_msg, "parsed_data": {"error": error_msg}}
 
-def statistical_analysis_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
+def statistical_analysis_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None) -> AnalyticsState:
     """Perform statistical analysis on the parsed data."""
-    if progress_callback:
-        progress_callback("Performing statistical analysis...", 70)
+    if progress_manager:
+        progress_manager.update_progress("Performing statistical analysis...", AnalyticsProgressStages.STATISTICAL_ANALYSIS, progress_callback)
     
     logger.info("\n=== Statistical Analysis ===")
     
@@ -349,10 +308,10 @@ def statistical_analysis_node(state: AnalyticsState, progress_callback: Optional
         logger.error(error_msg)
         return {"error": error_msg, "statistical_analysis": {"error": error_msg}}
 
-def trends_analysis_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
+def trends_analysis_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None) -> AnalyticsState:
     """Analyze trends in the data."""
-    if progress_callback:
-        progress_callback("Analyzing trends...", 80)
+    if progress_manager:
+        progress_manager.update_progress("Analyzing trends...", AnalyticsProgressStages.TRENDS_ANALYSIS, progress_callback)
     
     logger.info("\n=== Trends Analysis ===")
     
@@ -477,23 +436,15 @@ def trends_analysis_node(state: AnalyticsState, progress_callback: Optional[Prog
         logger.error(error_msg)
         return {"error": error_msg, "trends_analysis": {"error": error_msg}}
 
-def generate_insights_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
+def generate_insights_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None) -> AnalyticsState:
     """Generate business insights using LLM based on the analysis."""
-    if progress_callback:
-        progress_callback("Generating business insights...", 90)
+    if progress_manager:
+        progress_manager.update_progress("Generating business insights...", AnalyticsProgressStages.GENERATE_INSIGHTS, progress_callback)
     
     logger.info("\n=== Generating Insights ===")
     
     try:
-        # Configure ChatOpenAI with environment variables
-        llm_config = {
-            'temperature': 0.3, 
-            'model_name': OPENAI_MODEL_NAME
-        }
-        if API_BASE_URL:
-            llm_config['base_url'] = API_BASE_URL
-        
-        llm = ChatOpenAI(**llm_config)
+        llm = get_openai_client(temperature=0.3)
         
         # Prepare analysis summary for LLM
         analysis_summary = {
@@ -559,10 +510,10 @@ Provide 5-10 actionable business insights based on this analysis."""
         logger.error(error_msg)
         return {"error": error_msg, "insights": [f"Error generating insights: {error_msg}"]}
 
-def create_visualizations_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
+def create_visualizations_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None) -> AnalyticsState:
     """Create visualizations based on the data and analysis."""
-    if progress_callback:
-        progress_callback("Creating visualizations...", 95)
+    if progress_manager:
+        progress_manager.update_progress("Creating visualizations...", AnalyticsProgressStages.CREATE_VISUALIZATIONS, progress_callback)
     
     logger.info("\n=== Creating Visualizations ===")
     
@@ -661,15 +612,7 @@ def create_visualizations_node(state: AnalyticsState, progress_callback: Optiona
             # Only ask LLM if visualization is needed when user didn't explicitly request one
             logger.info("No explicit chart request - using LLM to determine if visualization is necessary")
             
-            # Configure ChatOpenAI
-            llm_config = {
-                'temperature': 0.1, 
-                'model_name': OPENAI_MODEL_NAME
-            }
-            if API_BASE_URL:
-                llm_config['base_url'] = API_BASE_URL
-            
-            llm = ChatOpenAI(**llm_config)
+            llm = get_openai_client(temperature=0.1)
             
             system_prompt = """You are a data visualization expert. Your task is to determine if a chart/visualization would add meaningful value to the user's analysis.
 
@@ -730,14 +673,8 @@ Would a chart add meaningful value to this analysis?"""
             # Let LLM intelligently choose the best chart type
             logger.info("Using LLM to choose appropriate chart type")
             
-            llm_config = {
-                'temperature': 0.1, 
-                'model_name': OPENAI_MODEL_NAME
-            }
-            if API_BASE_URL:
-                llm_config['base_url'] = API_BASE_URL
-            
-            llm = ChatOpenAI(**llm_config)
+
+            llm = get_openai_client(temperature=0.1)
             
             chart_system_prompt = """You are a data visualization expert. Your task is to choose the most appropriate chart type based on the user's query and data structure.
 
@@ -1090,10 +1027,10 @@ What is the most appropriate chart type?"""
             "visualization_images": []
         }
 
-def format_response_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None) -> AnalyticsState:
+def format_response_node(state: AnalyticsState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None) -> AnalyticsState:
     """Format the final analytics response."""
-    if progress_callback:
-        progress_callback("Formatting analytics report...", 100)
+    if progress_manager:
+        progress_manager.update_progress("Formatting analytics report...", AnalyticsProgressStages.FORMAT_RESPONSE, progress_callback)
     
     logger.info("\n=== Formatting Final Response ===")
     
@@ -1242,16 +1179,19 @@ def analyze_sql_results(original_query: str, sql_results: str, progress_callback
     
     # Run the workflow
     try:
-        # Create workflow with progress callback
+        # Initialize progress manager
+        progress_manager = ProgressManager(is_sub_workflow=False)  # Analytics is a standalone workflow
+        
+        # Create workflow with progress manager
         workflow = StateGraph(AnalyticsState)
 
-        # Add nodes with different names to avoid state key conflicts
-        workflow.add_node("parse_data_node", lambda state: parse_data_node(state, progress_callback))
-        workflow.add_node("statistical_analysis_node", lambda state: statistical_analysis_node(state, progress_callback))
-        workflow.add_node("trends_analysis_node", lambda state: trends_analysis_node(state, progress_callback))
-        workflow.add_node("generate_insights_node", lambda state: generate_insights_node(state, progress_callback))
-        workflow.add_node("create_visualizations_node", lambda state: create_visualizations_node(state, progress_callback))
-        workflow.add_node("format_response_node", lambda state: format_response_node(state, progress_callback))
+        # Add nodes with progress manager
+        workflow.add_node("parse_data_node", lambda state: parse_data_node(state, progress_callback, progress_manager))
+        workflow.add_node("statistical_analysis_node", lambda state: statistical_analysis_node(state, progress_callback, progress_manager))
+        workflow.add_node("trends_analysis_node", lambda state: trends_analysis_node(state, progress_callback, progress_manager))
+        workflow.add_node("generate_insights_node", lambda state: generate_insights_node(state, progress_callback, progress_manager))
+        workflow.add_node("create_visualizations_node", lambda state: create_visualizations_node(state, progress_callback, progress_manager))
+        workflow.add_node("format_response_node", lambda state: format_response_node(state, progress_callback, progress_manager))
 
         # Define the flow
         workflow.add_edge("parse_data_node", "statistical_analysis_node")

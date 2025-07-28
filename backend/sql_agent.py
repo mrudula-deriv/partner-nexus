@@ -1,289 +1,37 @@
-import psycopg2
-from dotenv import load_dotenv
-import os
-import json
+from utils import get_openai_client, get_supabase_client
+import json, datetime, os
 import sqlglot
 from sqlglot.errors import ParseError
-from psycopg2.extras import RealDictCursor
+
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from tabulate import tabulate
-from typing import TypedDict, Annotated, Sequence, Optional, Callable
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import OpenAIEmbeddings
-import logging
-from logging.handlers import RotatingFileHandler
-import datetime
+from tabulate import tabulate
+from typing import TypedDict, Annotated, Sequence, Optional, Callable
+
 from supabase import create_client, Client
-
-# Progress callback type
-ProgressCallback = Callable[[str, int], None]
-
-# Create logs directory if it doesn't exist
-if not os.path.exists('logs'):
-    os.makedirs('logs') 
-
-# Set up logging configuration
-def setup_logger():
-    """Set up a logger with file and console handlers."""
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    
-    # File handler with rotation
-    file_handler = RotatingFileHandler(
-        'logs/sql_agent.log',
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5
-    )
-    file_handler.setFormatter(formatter)
-    
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    
-    # Create logger
-    logger = logging.getLogger('sql_agent')
-    logger.setLevel(logging.INFO)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
+from logging_config import LoggingConfig
+from schema_manager import read_schema_metadata, schema_dict_to_chunks
+from vector_store import retrieve_context, initialize_vector_store
+from progress_manager import ProgressManager, SQLProgressStages, ProgressCallback
 
 # Create logger
-logger = setup_logger()
+logger = LoggingConfig('sql_agent').setup_logger()
 
-# Load environment variables from .env
-load_dotenv()
+# Initialize clients
+supabase_client: Client = get_supabase_client()
+llm = get_openai_client()
 
-db_params = {
-    'host': os.getenv('host'),
-    'port': os.getenv('port'),
-    'database': os.getenv('dbname'),
-    'user': os.getenv('user'),
-    'password': os.getenv('password')
-}
-
-# OpenAI configuration from environment variables
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-API_BASE_URL = os.getenv('API_BASE_URL')
-OPENAI_MODEL_NAME = os.getenv('OPENAI_MODEL_NAME')
-
-conn = psycopg2.connect(**db_params)
-cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-
-# Supabase configuration
-SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')
-SUPABASE_URL = os.getenv('SUPABASE_URL')
-SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-
-supabase_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-def get_llm(model=OPENAI_MODEL_NAME, temperature=0) -> ChatOpenAI:
-    config = {"model_name": model, "temperature": temperature}
-    if API_BASE_URL:
-        config["base_url"] = API_BASE_URL
-    return ChatOpenAI(**config)
-
-def save_categorical_dictionary(supabase_client, output_path="metadata/categorical_values.json"):
-    """
-    Calls the build_categorical_dictionary function on Supabase and saves result as a JSON file.
-    
-    Args:
-        supabase_client: An authenticated Supabase Python client.
-        output_path (str): Path to write the output JSON.
-    Returns:
-        None
-    """
-    # Call the RPC function
-    print("Fetching categorical dictionary from Supabase...")
-    response = supabase_client.rpc("build_categorical_dictionary").execute()
-    data = response.data
-
-    if not data:
-        raise ValueError("No data returned from Supabase RPC build_categorical_dictionary.")
-
-    # Make sure the output directory exists
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    # Write to JSON file
-    with open(output_path, "w") as f:
-        json.dump(data, f, indent=2)
-    print(f"✓ Categorical dictionary saved to {output_path}")
-
-def read_categorical_dictionary():
-    """Read schema metadata from JSON file."""
-    json_file_path = 'metadata/categorical_values.json'
-    if not os.path.exists(json_file_path):
-        categorical_dict = save_categorical_dictionary(supabase_client)
-    
-    with open(json_file_path, 'r') as f:
-        categorical_dict = json.load(f)
-    return categorical_dict
-
-def get_multi_schema_metadata(schemas: list[str]):
-    """
-    Fetches metadata for the given schemas by calling the Supabase RPC function,
-    formats it, and saves it to a JSON file.
-    """
-    logger.info("Fetching metadata for schemas: %s", schemas)
-    response = supabase_client.rpc("get_schema_metadata", {"p_schema_names_json": schemas}).execute()
-
-    rows = response.data
-    if not rows:
-        logger.warning("Metadata fetch returned no data.")
-        rows = []
-
-    logger.info("Successfully retrieved metadata.")
-
-    schema_dict = {}
-    for table_data in rows:
-        schema = table_data.get('table_schema')
-        table = table_data.get('table_name')
-        if not schema or not table:
-            continue
-            
-        key = f"{schema}.{table}"
-        schema_dict[key] = {
-            "columns": table_data.get('columns', []),
-            "relationships": [],  # Initialize empty relationships list
-            "description": table_data.get('table_description')
-        }
-    
-    # Infer and add relationships directly to the schema metadata
-    schema_dict_with_relationships = infer_table_relationships(schema_dict)
-    
-    # Create a directory for storing metadata if it doesn't exist
-    if not os.path.exists('metadata'):
-        os.makedirs('metadata')
-    
-    # Write schema data to JSON file
-    json_file_path = 'metadata/schema_metadata.json'
-    with open(json_file_path, 'w') as f:
-        json.dump(schema_dict_with_relationships, f, indent=4)
-    
-    return json_file_path
-
-def read_schema_metadata():
-    """Read schema metadata from JSON file."""
-    json_file_path = 'metadata/schema_metadata.json'
-    if not os.path.exists(json_file_path):
-        schema_file = get_multi_schema_metadata(['partner', 'client'])
-    
-    with open(json_file_path, 'r') as f:
-        schema_dict = json.load(f)
-    return schema_dict
-
-def infer_table_relationships(schema_dict: dict):
-    """
-    Infers table relationships from the schema based on naming conventions.
-    Adds the inferred relationships directly to the schema_dict and returns it.
-    Also saves the relationships to a separate JSON file for backward compatibility.
-    """
-    logger.info("Inferring table relationships from schema...")
-    
-    primary_keys = {}
-    for table_name, table_data in schema_dict.items():
-        for column in table_data['columns']:
-            if column.get('is_primary_key'):
-                # Store as {column_name: table_name} for easy lookup
-                pk_col_name = column.get('column_name')
-                if pk_col_name:
-                    primary_keys[pk_col_name] = table_name
-
-    # Create a copy of schema_dict to modify
-    updated_schema_dict = schema_dict.copy()
-    relationships_dict = {}  # For backward compatibility
-    
-    for table_name, table_data in schema_dict.items():
-        relations = []
-        for column in table_data['columns']:
-            col_name = column.get('column_name')
-            if not col_name or column.get('is_primary_key'):
-                continue
-
-            # Heuristic 1: column name is a primary key in another table
-            if col_name in primary_keys and primary_keys[col_name] != table_name:
-                relation = {
-                    'foreign_key_column': col_name,
-                    'references_table': primary_keys[col_name],
-                    'references_column': col_name,
-                    'constraint_name': f"inferred_fk_{table_name.replace('.', '_')}_{col_name}"
-                }
-                relations.append(relation)
-                continue
-            
-            # Heuristic 2: column name of the form `..._id` or `..._pk`
-            if col_name.endswith(('_id', '_pk')):
-                # Try to find a table that matches the prefix
-                prefix = col_name.rsplit('_', 1)[0]
-                # Look for tables named `prefix` or `prefix` + 's' (plural)
-                for pk_name, pk_table_name in primary_keys.items():
-                    pk_table_base_name = pk_table_name.split('.')[-1]
-                    if pk_table_base_name == prefix or pk_table_base_name == prefix + 's':
-                        relation = {
-                            'foreign_key_column': col_name,
-                            'references_table': pk_table_name,
-                            'references_column': pk_name,
-                            'constraint_name': f"inferred_fk_{table_name.replace('.', '_')}_{col_name}"
-                        }
-                        relations.append(relation)
-
-        # Add relationships to the schema metadata
-        if relations:
-            updated_schema_dict[table_name]['relationships'] = relations
-            relationships_dict[table_name] = relations  # For backward compatibility
-
-    logger.info("Successfully inferred relationships.")
-    
-    return updated_schema_dict
-
-# Get schema metadata
-schema_dict = read_schema_metadata()
-
-def schema_dict_to_chunks(schema_dict):
-    chunks = []
-    for table, meta in schema_dict.items():
-        columns = meta.get("columns", [])
-        relationships = meta.get("relationships", [])
-        desc = meta.get("description", "")
-        column_text = "\n".join(
-            f"- {col['column_name']} ({col['data_type']})"
-            for col in columns
-        )
-        rel_text = "\n".join(
-            f"- {r['foreign_key_column']} → {r['references_table']}.{r['references_column']}"
-            for r in relationships
-        )
-        chunk = f"""
-        Table: {table}
-        Description: {desc}
-        Columns:
-        {column_text}
-        Relationships:
-        {rel_text}
-        """
-        chunks.append(chunk.strip())
-    return chunks
-
-
-embedding = OpenAIEmbeddings(
-    openai_api_key=OPENAI_API_KEY,  # not used by LiteLLM but required
-    openai_api_base=API_BASE_URL,  # Your LiteLLM proxy
-    model="text-embedding-ada-002"
-)
-
-schema_chunks = schema_dict_to_chunks(read_schema_metadata())
-vectorstore = FAISS.from_texts(schema_chunks, embedding=embedding)
-vectorstore.save_local("metadata/schema_vectorstore")
-
-retriever = FAISS.load_local("metadata/schema_vectorstore", embedding, allow_dangerous_deserialization=True)
-
-def retrieve_context(user_query: str) -> str:
-    docs = retriever.similarity_search(user_query, k=7)
-    return "\n\n".join([doc.page_content for doc in docs])
+# Initialize vector store
+try:
+    vectorstore = initialize_vector_store(supabase_client)
+    logger.info("Vector store initialized successfully")
+except Exception as e:
+    logger.warning(f"Failed to initialize vector store: {str(e)}")
+    logger.warning("SQL Agent will work without vector store features")
+    vectorstore = None
 
 # Define the state type
 class AgentState(TypedDict):
@@ -300,8 +48,8 @@ class AgentState(TypedDict):
     progress: Optional[int]  # New field for progress tracking
 
 def get_table_info(prompt: str) -> str:
-    table_info = retrieve_context(prompt)
-    return table_info
+    """Get relevant table information for the prompt."""
+    return retrieve_context(prompt)
 
 def clean_sql_query(sql_text: str) -> str:
     """Clean SQL query by removing markdown formatting and extra whitespace."""
@@ -322,21 +70,15 @@ def clean_sql_query(sql_text: str) -> str:
     
     return sql_text
 
-def generate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
+def generate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None, llm: ChatOpenAI = llm) -> AgentState:
     """Generate SQL query from natural language input."""
-    progress = 20
-    if progress_callback:
-        if get_progress:
-            progress = get_progress(progress)
-        progress_callback("Generating SQL query...", progress)
+    if progress_manager:
+        progress_manager.update_progress("Generating SQL query...", SQLProgressStages.GENERATE_SQL, progress_callback)
     
     logger.info("\n=== Generating SQL Query ===")
     logger.info(f"Input prompt: {state['prompt']}")
 
-    table_info = retrieve_context(state["prompt"])
-    
-    # Configure ChatOpenAI with environment variables
-    llm = get_llm()
+    schema_chunks = schema_dict_to_chunks(read_schema_metadata(supabase_client))
     
     system_prompt = f"""You are an expert PostgreSQL query generator that creates accurate SQL queries based on natural language questions and database metadata. You will analyze user questions and generate appropriate PostgreSQL queries using the provided database schema information.
 
@@ -397,23 +139,16 @@ Strictly return ONLY the SQL query, DO NOT include any other text, markdown or o
     # Clean the SQL query to remove any markdown formatting
     cleaned_sql = clean_sql_query(response.content)
     
-    logger.info(f"Generated SQL (raw):\n{response.content}")
     logger.info(f"Generated SQL (cleaned):\n{cleaned_sql}")
-    return {"sql_query": cleaned_sql, "progress": progress}
+    return {"sql_query": cleaned_sql, "progress": SQLProgressStages.GENERATE_SQL}
 
-def verify_intent_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
+def verify_intent_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None, llm: ChatOpenAI = llm) -> AgentState:
     """Verify if the SQL query matches the original intent."""
-    progress = 40
-    if progress_callback:
-        if get_progress:
-            progress = get_progress(progress)
-        progress_callback("Verifying query intent...", progress)
+    if progress_manager:
+        progress_manager.update_progress("Verifying query intent...", SQLProgressStages.VERIFY_INTENT, progress_callback)
     
     logger.info("\n=== Verifying SQL Intent ===")
     logger.info(f"SQL to verify:\n{state['sql_query']}")
-    
-    # Configure ChatOpenAI with environment variables
-    llm = get_llm()
     
     system_prompt = f"""You are a PostgreSQL query validator. Your task is to verify that a generated SQL query correctly matches the business intent expressed in the original natural language prompt.
     Here is the original natural language prompt that describes the business intent: {state["prompt"]}
@@ -454,16 +189,13 @@ def verify_intent_node(state: AgentState, progress_callback: Optional[ProgressCa
     return {
         "matches_intent": matches_intent,
         "improved_prompt": improved_prompt,
-        "progress": progress
+        "progress": SQLProgressStages.VERIFY_INTENT
     }
 
-def validate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
+def validate_sql_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None, llm: ChatOpenAI = llm) -> AgentState:
     """Validate the SQL query."""
-    progress = 60
-    if progress_callback:
-        if get_progress:
-            progress = get_progress(progress)
-        progress_callback("Validating SQL syntax...", progress)
+    if progress_manager:
+        progress_manager.update_progress("Validating SQL syntax...", SQLProgressStages.VALIDATE_SQL, progress_callback)
     
     logger.info("\n=== Validating SQL Query ===")
     logger.info(f"SQL to validate:\n{state['sql_query']}")
@@ -471,7 +203,6 @@ def validate_sql_node(state: AgentState, progress_callback: Optional[ProgressCal
     try:
         explain = supabase_client.rpc("run_raw_sql", {"raw_sql": state["sql_query"]}).execute()
         result_data = getattr(explain, "data", None)
-        categorical_dict = read_categorical_dictionary()
 
         if result_data:
             logger.info("Validation response received:")
@@ -480,40 +211,41 @@ def validate_sql_node(state: AgentState, progress_callback: Optional[ProgressCal
             # Detect if result_data contains an error string
             if result_data.find("cost") == -1:
                 if progress_callback:
-                    progress_callback("SQL validation failed, correcting syntax...", progress)
+                    progress_callback("SQL validation failed, correcting syntax...", SQLProgressStages.VALIDATE_SQL)
                 return {
                     "syntax_validation_passed": False,
                     "error_message": result_data,
-                    "progress": progress
+                    "progress": SQLProgressStages.VALIDATE_SQL
                 }
 
             # Otherwise, assume it's valid EXPLAIN output
             if progress_callback:
-                progress_callback("SQL validation passed", progress)
+                progress_callback("SQL validation passed", SQLProgressStages.VALIDATE_SQL)
+                #validate_values = supabase_client.rpc("validate_query_categorical_values", {"query_text": state["sql_query"]}).execute()
             return {
                 "syntax_validation_passed": True,
                 "explain_output": result_data,
-                "progress": progress
+                "progress": SQLProgressStages.VALIDATE_SQL
             }
 
         else:
             logger.warning("Validation returned empty data.")
             if progress_callback:
-                progress_callback("SQL validation failed - no output", progress)
+                progress_callback("SQL validation failed - no output", SQLProgressStages.VALIDATE_SQL)
             return {
                 "syntax_validation_passed": False,
                 "error_message": "No output returned from Supabase RPC.",
-                "progress": progress
+                "progress": SQLProgressStages.VALIDATE_SQL
             }
 
     except Exception as e:
         logger.error(f"Unexpected error during SQL validation: {str(e)}")
         if progress_callback:
-            progress_callback(f"SQL validation error: {str(e)}", progress)
+            progress_callback(f"SQL validation error: {str(e)}", SQLProgressStages.VALIDATE_SQL)
         return {
             "syntax_validation_passed": False,
             "error_message": str(e),
-            "progress": progress
+            "progress": SQLProgressStages.VALIDATE_SQL
         }
 
 def correct_sql_node(state: AgentState) -> AgentState:
@@ -528,13 +260,12 @@ def correct_sql_node(state: AgentState) -> AgentState:
 
     return {"prompt": improved_prompt}
     
-def correct_syntax_node(state: AgentState) -> AgentState:
+def correct_syntax_node(state: AgentState, llm: ChatOpenAI = llm) -> AgentState:
     """Correct the SQL query based on verification results."""
     logger.info("\n=== Correcting SQL Query ===")
     logger.info(f"SQL to correct:\n{state['sql_query']}")
 
     current_attempt = state.get("attempt", 0) + 1
-    llm = get_llm()
 
     system_prompt = f"""You are a PostgreSQL query corrector. Your task is to:
     1. Analyze the verification results of the generated SQL query
@@ -557,13 +288,10 @@ def correct_syntax_node(state: AgentState) -> AgentState:
     cleaned_sql = clean_sql_query(response.content)
     return {"sql_query": cleaned_sql}
 
-def execute_query_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
+def execute_query_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None, supabase_client: Client = supabase_client) -> AgentState:
     """Execute the SQL query and return results."""
-    progress = 80
-    if progress_callback:
-        if get_progress:
-            progress = get_progress(progress)
-        progress_callback("Executing query...", progress)
+    if progress_manager:
+        progress_manager.update_progress("Executing query...", SQLProgressStages.EXECUTE_QUERY, progress_callback)
     
     logger.info("\n=== Executing SQL Query ===")
     logger.info(f"Executing:\n{state['sql_query']}")
@@ -578,8 +306,8 @@ def execute_query_node(state: AgentState, progress_callback: Optional[ProgressCa
         if not results:
             logger.info("Query executed successfully but returned no results")
             if progress_callback:
-                progress_callback("Query executed - no results found", progress)
-            return {"results": "✅ Query ran successfully, but no results were found.", "progress": progress}
+                progress_callback("Query executed - no results found", SQLProgressStages.EXECUTE_QUERY)
+            return {"results": "✅ Query ran successfully, but no results were found.", "progress": SQLProgressStages.EXECUTE_QUERY}
 
         columns = list(results[0].keys())
         rows = [list(row.values()) for row in results]
@@ -589,30 +317,27 @@ def execute_query_node(state: AgentState, progress_callback: Optional[ProgressCa
         
         logger.info(f"Query executed successfully. Retrieved {len(results)} rows")
         if progress_callback:
-            progress_callback(f"Query executed - found {len(results)} rows", progress)
-        return {"results": summary + "\n" + table, "progress": progress}
+            progress_callback(f"Query executed - found {len(results)} rows", SQLProgressStages.EXECUTE_QUERY)
+        return {"results": summary + "\n" + table, "progress": SQLProgressStages.EXECUTE_QUERY}
 
     except Exception as e:
         error_msg = f"❌ Query failed:\n{str(e)}"
         logger.error(f"Query execution failed: {str(e)}")
         if progress_callback:
-            progress_callback(f"Query execution failed: {str(e)}", progress)
-        return {"error": error_msg, "progress": progress}
+            progress_callback(f"Query execution failed: {str(e)}", SQLProgressStages.EXECUTE_QUERY)
+        return {"error": error_msg, "progress": SQLProgressStages.EXECUTE_QUERY}
 
-def format_response_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, get_progress: Optional[Callable[[int], int]] = None) -> AgentState:
+def format_response_node(state: AgentState, progress_callback: Optional[ProgressCallback] = None, progress_manager: Optional[ProgressManager] = None) -> AgentState:
     """Format the final response."""
-    progress = 100
-    if progress_callback:
-        if get_progress:
-            progress = get_progress(progress)
-        progress_callback("Formatting results...", progress)
+    if progress_manager:
+        progress_manager.update_progress("Formatting results...", SQLProgressStages.FORMAT_RESPONSE, progress_callback)
     
     logger.info("\n=== Formatting Final Response ===")
     if state.get("error"):
         logger.info("Formatting error response")
-        return {"results": state["error"], "progress": progress}
+        return {"results": state["error"], "progress": SQLProgressStages.FORMAT_RESPONSE}
     logger.info("Formatting successful response")
-    state["progress"] = progress
+    state["progress"] = SQLProgressStages.FORMAT_RESPONSE
     return state
 
 def should_retry(state: AgentState) -> bool:
@@ -623,7 +348,6 @@ def should_retry(state: AgentState) -> bool:
     should_retry = not matches_intent and not syntax_validation_passed and current_attempt < 3
     
     logger.info(f"\n=== Retry Decision ===")
-    logger.info(f"Current attempt: {current_attempt}")
     logger.info(f"Intent match: {matches_intent}")
     logger.info(f"Should retry: {should_retry}")
     
@@ -636,22 +360,17 @@ def create_workflow(progress_callback: Optional[ProgressCallback] = None, is_ana
     """Create and return a workflow with optional progress callback"""
     workflow = StateGraph(AgentState)
 
-    # Calculate progress percentages based on workflow type
-    def get_progress(base_progress: int) -> int:
-        if is_analytics_workflow:
-            # When part of analytics workflow, use 0-50% range
-            return base_progress // 2
-        # When running independently, use full 0-100% range
-        return base_progress
+    # Initialize progress manager
+    progress_manager = ProgressManager(is_sub_workflow=is_analytics_workflow)
 
-    # Add nodes with progress callback
-    workflow.add_node("generate_sql", lambda x: generate_sql_node(x, progress_callback, get_progress))
-    workflow.add_node("verify_intent", lambda x: verify_intent_node(x, progress_callback, get_progress))
-    workflow.add_node("validate_sql", lambda x: validate_sql_node(x, progress_callback, get_progress))
+    # Add nodes with progress manager
+    workflow.add_node("generate_sql", lambda x: generate_sql_node(x, progress_callback, progress_manager))
+    workflow.add_node("verify_intent", lambda x: verify_intent_node(x, progress_callback, progress_manager))
+    workflow.add_node("validate_sql", lambda x: validate_sql_node(x, progress_callback, progress_manager))
     workflow.add_node("correct_sql", correct_sql_node)
     workflow.add_node("correct_syntax", correct_syntax_node)
-    workflow.add_node("execute_query", lambda x: execute_query_node(x, progress_callback, get_progress))
-    workflow.add_node("format_response", lambda x: format_response_node(x, progress_callback, get_progress))
+    workflow.add_node("execute_query", lambda x: execute_query_node(x, progress_callback, progress_manager))
+    workflow.add_node("format_response", lambda x: format_response_node(x, progress_callback, progress_manager))
 
     # Define the flow
     workflow.add_edge("generate_sql", "verify_intent")

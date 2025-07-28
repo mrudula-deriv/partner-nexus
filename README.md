@@ -1,125 +1,182 @@
 # Nexus Analytics System
 
-A comprehensive SQL and Analytics agent system for partner affiliate program analytics.
+A comprehensive SQL and Analytics agent system for partner affiliate program analytics, featuring natural language query processing, data analysis, and visualization capabilities.
 
 ## Project Structure
 
 ```
-nexus/
-├── README.md                   # This file
-├── start_backend.py           # Backend startup script
-├── .env                       # Environment variables
-├── backend/                   # Backend services directory
-│   ├── main.py               # Flask API server (renamed from backend.py)
-│   ├── sql_agent.py          # SQL Agent (renamed from sql_agent1.py)
-│   ├── analytics_agent.py    # Analytics Agent with visualizations
-│   └── logs/                 # Log files directory
-├── frontend/                 # React frontend
-│   ├── src/
-│   ├── public/
-│   ├── package.json
-│   └── ...
-└── venv/                     # Virtual environment
+partner-nexus1/
+├── backend/                    # Backend services directory
+│   ├── main.py                # Flask API server and route handlers
+│   ├── sql_agent.py           # SQL query generation and execution
+│   ├── analytics_agent.py     # Data analysis and visualization
+│   ├── screener.py            # Partner screener functionality
+│   ├── spotlight_dashboard.py # Dashboard data and insights
+│   ├── progress_manager.py    # WebSocket progress tracking
+│   ├── config.py              # Environment and client configuration
+│   ├── logging_config.py      # Logging setup and configuration
+│   ├── schema_manager.py      # Database schema operations
+│   ├── utils.py               # Shared utility functions
+│   ├── vector_store.py        # FAISS vector store initialization
+│   ├── logs/                  # Log files directory
+│   └── metadata/              # Schema and vector store data
+│       ├── schema_metadata.json
+│       └── schema_vectorstore/
+├── frontend/                  # React frontend application
+│   ├── src/                  # React source code
+│   ├── public/               # Static assets
+│   ├── package.json          # NPM dependencies
+│   └── package-lock.json     # Locked NPM versions
+├── .env.example              # Example environment variables
+└── README.md                 # This file
 ```
 
 ## Quick Start
 
-### 1. Backend (API Server)
+### 1. Backend Setup
 
 From the project root directory:
 
 ```bash
-# Option 1: Use the startup script
-python start_backend.py
+# 1. Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate
 
-# Option 2: Run directly from backend directory
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Set up environment variables
+cp .env.example .env
+# Edit .env with your credentials:
+# - Database configuration (host, port, dbname, user, password)
+# - OpenAI API configuration (API key, base URL, model name)
+# - Supabase configuration (URL, anon key, service role key)
+
+# 4. Run the backend server
 cd backend
 python main.py
 ```
 
-The backend will be available at: `http://localhost:5000`
+The backend will be available at: `http://127.0.0.1:5001`
 
 ### 2. Frontend (React UI)
 
+In a new terminal, from the project root:
+
 ```bash
 cd frontend
+npm install
 npm start
 ```
 
 The frontend will be available at: `http://localhost:3000`
 
+## Core Components
+
+### SQL Agent (`sql_agent.py`)
+- Natural language to SQL query conversion
+- Query validation and auto-correction
+- Schema-aware query generation using vector search
+- Real-time progress tracking via WebSocket
+- Key features:
+  - Intent verification with LLM
+  - Syntax validation using EXPLAIN
+  - Auto-correction with retry loops
+  - Schema context retrieval using FAISS
+
+### Analytics Agent (`analytics_agent.py`)
+- Advanced data analysis and visualization
+- Pattern and trend detection
+- Business insight generation
+- Visualization types:
+  - Bar charts (single and grouped)
+  - Line charts (single and multi-series)
+  - Pie charts and histograms
+  - Custom visualizations based on data type
+
+### Partner Screener (`screener.py`)
+- Partner performance analysis
+- Filtering and sorting capabilities
+- Detailed metrics calculation
+- Performance trend visualization
+
+### Spotlight Dashboard (`spotlight_dashboard.py`)
+- Real-time partner program metrics
+- AI-generated insights for each widget
+- Comprehensive data aggregation
+- Key metrics:
+  - Partner acquisition and activation
+  - Regional performance analysis
+  - VAN trip effectiveness
+  - Conversion funnel metrics
+
 ## API Endpoints
 
-- `GET /health` - Health check
-- `POST /sql-agent` - Test SQL Agent only
-- `POST /analytics-agent` - Test SQL + Analytics combined workflow
+The API supports both HTTP and WebSocket connections:
 
-## Features
+### HTTP Endpoints
+- `GET /health` - Server health check
+- `POST /sql-agent` - Execute SQL queries from natural language
+- `POST /analytics-agent` - Run analytics workflow
+- `GET /screener` - Get partner screener data
+- `GET /spotlight-dashboard` - Get dashboard metrics
+- `GET /funnel-metrics` - Get conversion funnel data
 
-### SQL Agent
-- Generates SQL queries from natural language
-- Query verification and auto-correction
-- Handles ambiguous column references
-- Database schema-aware
+### WebSocket Events
+- `progress_update` - Real-time task progress
+- `query_result` - SQL query results
+- `analysis_complete` - Analytics completion
+- `error` - Error notifications
 
-### Analytics Agent
-- Statistical analysis of SQL results
-- Pattern recognition
-- Trend analysis
-- Business insights generation
-- Multi-series visualizations for comparisons
-- Support for bar charts, line charts, pie charts, histograms
+## Configuration Files
 
-### Visualization Types
-- **Single Bar Chart**: For simple categorical data
-- **Grouped Bar Chart**: For comparing categories across groups
-- **Single Line Chart**: For time series data
-- **Multi-Line Chart**: For comparing multiple entities over time
-- **Pie Chart**: For distribution analysis
+### `config.py`
+- Environment variable management
+- Database connection setup
+- OpenAI client configuration
+- Supabase client initialization
 
-## Environment Setup
+### `logging_config.py`
+- Centralized logging setup
+- File and console handlers
+- Log rotation configuration
 
-Create a `.env` file with:
+### `schema_manager.py`
+- Database schema metadata handling
+- Table relationship inference
+- Schema caching and updates
 
-```env
-# Database Configuration
-host=your_host
-port=your_port
-dbname=your_database
-user=your_username
-password=your_password
+### `vector_store.py`
+- FAISS vector store setup
+- Schema embedding management
+- Semantic search functionality
 
-# OpenAI Configuration
-OPENAI_API_KEY=your_openai_api_key
-API_BASE_URL=your_api_base_url
-OPENAI_MODEL_NAME=your_model_name
-```
-
-## Development
+## Development Guidelines
 
 ### Backend Development
-All backend code is organized in the `backend/` directory:
-- `main.py`: Main Flask API server
-- `sql_agent.py`: SQL generation and execution logic
-- `analytics_agent.py`: Data analysis and visualization logic
+- Python 3.8+ required
+- Uses Flask for API server
+- LangChain for LLM workflows
+- PostgreSQL database
+- Key dependencies:
+  - `psycopg2` for database access
+  - `openai` for LLM integration
+  - `langchain` for agent workflows
+  - `faiss-cpu` for vector search
+  - `plotly` for visualization
 
 ### Frontend Development
-React frontend is in the `frontend/` directory with standard React project structure.
+- React 18+
+- Material-UI components
+- WebSocket for real-time updates
+- Key features:
+  - Real-time progress tracking
+  - Interactive visualizations
+  - Responsive dashboard layout
+  - Query history management
 
-### Logs
-Application logs are stored in `backend/logs/`:
-- `sql_agent.log`: SQL agent operations
-- `analytics_agent.log`: Analytics operations
-
-## Usage Examples
-
-### Query Examples
-- "Top 5 partners by client deposits in March 2025"
-- "Compare partner performance across regions with bar graph"
-- "Show partner commission trends over time"
-
-### Comparison Queries
-When asking for comparisons, the system automatically generates multi-series visualizations:
-- Multi-line charts for time-based comparisons
-- Grouped bar charts for categorical comparisons
-- Enhanced trend analysis for performance comparisons 
+### Logging
+All operations are logged in `backend/logs/`:
+- `sql_agent.log` - Query operations
+- `analytics_agent.log` - Analysis operations
+- Log rotation: 10MB max size, 5 backup files 

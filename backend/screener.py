@@ -177,8 +177,10 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
                             ELSE 'Unknown'
                         END as "{display_name}"
                     """)
+                    group_by_cols.append(col_name)  # Add the actual column to GROUP BY
                 elif filter_name == 'partner_levels':
                     select_parts.append(f'COALESCE({col_name}::text, \'Unknown\') as "{display_name}"')
+                    group_by_cols.append(col_name)
                 elif filter_name == 'date_joined':
                     select_parts.append(f'TO_CHAR(date_joined, \'Mon YYYY\') as "{display_name}"')
                     group_by_cols.append(f'TO_CHAR(date_joined, \'Mon YYYY\')')
@@ -343,7 +345,15 @@ def fetch_metrics_data(selected_metrics, where_clause="", params=None, active_fi
             # Debug print
             if params:
                 print("Query parameters:", params)
-                print("Final query:", cursor.mogrify(query, params).decode())
+                try:
+                    mogrified = cursor.mogrify(query, params)
+                    if isinstance(mogrified, bytes):
+                        print("Final query:", mogrified.decode())
+                    else:
+                        print("Final query:", mogrified)
+                except Exception as e:
+                    print(f"Could not mogrify query: {e}")
+                    print("Query template:", query)
             else:
                 print("Final query:", query)
             
@@ -546,14 +556,17 @@ def create_filter_query(filters):
                     status_conditions = []
                     for value in valid_values:
                         if value == 'Attended':
-                            status_conditions.append(f"{col_map[filter_name]} = TRUE")
+                            status_conditions.append(f"{col_map[filter_name]} = %s")
                             params.append(True)
                         elif value == 'Not Attended':
-                            status_conditions.append(f"{col_map[filter_name]} = FALSE")
+                            status_conditions.append(f"{col_map[filter_name]} = %s")
                             params.append(False)
                     if status_conditions:
-                        for condition in status_conditions:
-                            conditions.append(condition)
+                        if len(status_conditions) > 1:
+                            # If multiple status conditions, use OR
+                            conditions.append(f"({' OR '.join(status_conditions)})")
+                        else:
+                            conditions.extend(status_conditions)
                 else:
                     # Use a single IN clause with the correct number of placeholder
                     placeholders = ','.join(['%s'] * len(valid_values))

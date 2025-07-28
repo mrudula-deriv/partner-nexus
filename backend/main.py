@@ -10,7 +10,7 @@ from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from sql_agent import create_workflow
 from analytics_agent import analyze_sql_results
-import logging
+from logging_config import LoggingConfig
 import traceback
 import json
 from psycopg2.extras import RealDictCursor
@@ -35,13 +35,35 @@ from spotlight_dashboard import (
     get_funnel_metrics
 )
 
+# Import country dashboard functions
+from country_dashboard import (
+    get_country_performance_overview,
+    get_country_growth_trends,
+    get_country_detailed_metrics,
+    get_country_comparison_data,
+    get_available_countries,
+    get_partner_application_chart_data,
+    get_partner_application_chart_data_supabase,
+    get_partner_application_chart_data_client_only,
+    get_partner_funnel_data,
+    get_partner_activation_chart_data,
+    get_events_data,
+    get_country_performance_contribution,
+    get_active_partners_chart_data,
+    get_performance_stats_data,
+    get_earning_partners_chart_data,
+    get_top_partners_data,
+    get_inactive_partners_data,
+    get_new_partner_support_data,
+    generate_country_dashboard_insights
+)
+
 # Set up Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for React frontend
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = LoggingConfig('flask_app').setup_logger()
 
 # Create a thread-safe queue for progress updates
 progress_queues = {}
@@ -1125,6 +1147,472 @@ def get_ai_insight():
             'insight': 'Unable to generate insights at this time. Please try again later.'
         }), 500
 
+@app.route('/country-dashboard/overview', methods=['GET'])
+def get_country_dashboard_overview():
+    """Get country performance overview"""
+    try:
+        date_range = request.args.get('date_range', 90, type=int)
+        
+        logger.info(f"Fetching country overview for date_range={date_range}")
+        
+        overview_data = get_country_performance_overview(date_range)
+        
+        return jsonify({
+            'success': True,
+            'data': overview_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in country overview endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/growth-trends', methods=['GET'])
+def get_country_dashboard_growth_trends():
+    """Get country growth trends"""
+    try:
+        date_range = request.args.get('date_range', 180, type=int)
+        
+        logger.info(f"Fetching country growth trends for date_range={date_range}")
+        
+        trends_data = get_country_growth_trends(date_range)
+        
+        return jsonify({
+            'success': True,
+            'data': trends_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in country growth trends endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/country-details', methods=['GET'])
+def get_country_dashboard_details():
+    """Get detailed metrics for a specific country"""
+    try:
+        country = request.args.get('country')
+        date_range = request.args.get('date_range', 90, type=int)
+        
+        if not country:
+            return jsonify({
+                'success': False,
+                'error': 'Country parameter is required'
+            }), 400
+        
+        logger.info(f"Fetching country details for {country}, date_range={date_range}")
+        
+        details_data = get_country_detailed_metrics(country, date_range)
+        
+        return jsonify({
+            'success': True,
+            'data': details_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in country details endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/compare', methods=['POST'])
+def get_country_dashboard_comparison():
+    """Compare metrics across multiple countries"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({
+                'success': False,
+                'error': 'Request body is required'
+            }), 400
+        
+        countries = data.get('countries', [])
+        date_range = data.get('date_range', 90)
+        
+        if not countries:
+            return jsonify({
+                'success': False,
+                'error': 'Countries list is required'
+            }), 400
+        
+        logger.info(f"Comparing countries: {countries}, date_range={date_range}")
+        
+        comparison_data = get_country_comparison_data(countries, date_range)
+        
+        return jsonify({
+            'success': True,
+            'data': comparison_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in country comparison endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/countries', methods=['GET'])
+def get_country_dashboard_countries():
+    """Get list of available countries"""
+    try:
+        logger.info("Fetching available countries")
+        
+        countries_data = get_available_countries()
+        
+        return jsonify({
+            'success': True,
+            'data': countries_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in countries list endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/application-chart', methods=['GET'])
+def get_country_dashboard_application_chart():
+    """Get partner application chart data with event overlays"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        period_type = request.args.get('period_type', 'monthly', type=str)
+        start_date = request.args.get('start_date', None, type=str)
+        end_date = request.args.get('end_date', None, type=str)
+        partner_country = request.args.get('partner_country', None, type=str)
+        
+        logger.info(f"Fetching application chart data - range: {date_range} days, period: {period_type}, start: {start_date}, end: {end_date}, country: {partner_country}")
+        
+        # Use start_date and end_date if provided, otherwise fall back to date_range
+        chart_data = get_partner_application_chart_data(date_range, period_type, start_date, end_date, partner_country)
+        
+        return jsonify({
+            'success': True,
+            'data': chart_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in application chart endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/partner-funnel', methods=['GET'])
+def get_country_dashboard_partner_funnel():
+    """Get partner funnel conversion data"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        partner_country = request.args.get('partner_country', None, type=str)
+        
+        logger.info(f"Fetching partner funnel data - range: {date_range} days, country: {partner_country}")
+        
+        # Get funnel data
+        funnel_data = get_partner_funnel_data(date_range, partner_country)
+        
+        return jsonify({
+            'success': True,
+            'data': funnel_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in partner funnel endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/activation-chart', methods=['GET'])
+def get_country_dashboard_activation_chart():
+    """Get partner activation chart data"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        period_type = request.args.get('period_type', 'monthly', type=str)
+        partner_country = request.args.get('partner_country', None, type=str)
+        
+        logger.info(f"Fetching activation chart data - range: {date_range} days, period: {period_type}, country: {partner_country}")
+        
+        # Get activation data
+        activation_data = get_partner_activation_chart_data(date_range, period_type, partner_country)
+        
+        return jsonify({
+            'success': True,
+            'data': activation_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in activation chart endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/events', methods=['GET'])
+def get_country_dashboard_events():
+    """Get past and upcoming events data"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        partner_country = request.args.get('partner_country', None, type=str)
+        
+        logger.info(f"Fetching events data - range: {date_range} days, country: {partner_country}")
+        
+        # Get events data
+        events_data = get_events_data(date_range, partner_country)
+        
+        return jsonify({
+            'success': True,
+            'data': events_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in events endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/performance-contribution', methods=['GET'])
+def get_country_dashboard_performance_contribution():
+    """Get country performance contribution to regions"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        partner_country = request.args.get('partner_country', None, type=str)
+        
+        logger.info(f"Fetching performance contribution data - range: {date_range} days, country: {partner_country}")
+        
+        # Get performance contribution data
+        contribution_data = get_country_performance_contribution(date_range, partner_country)
+        
+        return jsonify({
+            'success': True,
+            'data': contribution_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in performance contribution endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/active-partners-chart', methods=['GET'])
+def get_country_dashboard_active_partners_chart():
+    """Get active partners chart data"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        period_type = request.args.get('period_type', 'monthly', type=str)
+        start_date = request.args.get('start_date', None, type=str)
+        end_date = request.args.get('end_date', None, type=str)
+        partner_country = request.args.get('partner_country', None, type=str)
+        
+        logger.info(f"Fetching active partners chart data - range: {date_range} days, period: {period_type}, country: {partner_country}")
+        
+        # Get active partners chart data
+        chart_data = get_active_partners_chart_data(date_range, period_type, start_date, end_date, partner_country)
+        
+        return jsonify({
+            'success': True,
+            'data': chart_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in active partners chart endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/performance-stats', methods=['GET'])
+def get_country_dashboard_performance_stats():
+    """Get performance stats data"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        period_type = request.args.get('period_type', 'monthly', type=str)
+        start_date = request.args.get('start_date', None, type=str)
+        end_date = request.args.get('end_date', None, type=str)
+        partner_country = request.args.get('partner_country', None, type=str)
+        
+        logger.info(f"Fetching performance stats data - range: {date_range} days, period: {period_type}, country: {partner_country}")
+        
+        # Get performance stats data
+        stats_data = get_performance_stats_data(date_range, period_type, start_date, end_date, partner_country)
+        
+        return jsonify({
+            'success': True,
+            'data': stats_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in performance stats endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/earning-partners-chart', methods=['GET'])
+def get_country_dashboard_earning_partners_chart():
+    """Get earning partners chart data"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        period_type = request.args.get('period_type', 'monthly', type=str)
+        start_date = request.args.get('start_date', None, type=str)
+        end_date = request.args.get('end_date', None, type=str)
+        partner_country = request.args.get('partner_country', None, type=str)
+        
+        logger.info(f"Fetching earning partners chart data - range: {date_range} days, period: {period_type}, country: {partner_country}")
+        
+        # Get earning partners chart data
+        chart_data = get_earning_partners_chart_data(date_range, period_type, start_date, end_date, partner_country)
+        
+        return jsonify({
+            'success': True,
+            'data': chart_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in earning partners chart endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/top-partners', methods=['GET'])
+def get_country_dashboard_top_partners():
+    """Get top 20 partners data"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        partner_country = request.args.get('partner_country', None, type=str)
+        limit = request.args.get('limit', 20, type=int)
+        
+        logger.info(f"Fetching top partners data - range: {date_range} days, country: {partner_country}, limit: {limit}")
+        
+        # Get top partners data
+        partners_data = get_top_partners_data(date_range, partner_country, limit)
+        
+        return jsonify({
+            'success': True,
+            'data': partners_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in top partners endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/inactive-partners', methods=['GET'])
+def get_country_dashboard_inactive_partners():
+    """Get inactive partners data by tiers"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        partner_country = request.args.get('partner_country', None, type=str)
+        limit = request.args.get('limit', 50, type=int)
+        
+        logger.info(f"Fetching inactive partners data - range: {date_range} days, country: {partner_country}, limit: {limit}")
+        
+        # Get inactive partners data
+        inactive_data = get_inactive_partners_data(date_range, partner_country, limit)
+        
+        return jsonify({
+            'success': True,
+            'data': inactive_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in inactive partners endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/new-partner-support', methods=['GET'])
+def get_country_dashboard_new_partner_support():
+    """Get new partner support data"""
+    try:
+        # Get query parameters
+        date_range = request.args.get('date_range', 90, type=int)
+        partner_country = request.args.get('partner_country', None, type=str)
+        limit = request.args.get('limit', 100, type=int)
+        
+        logger.info(f"Fetching new partner support data - range: {date_range} days, country: {partner_country}, limit: {limit}")
+        
+        # Get new partner support data
+        support_data = get_new_partner_support_data(date_range, partner_country, limit)
+        
+        return jsonify({
+            'success': True,
+            'data': support_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in new partner support endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/country-dashboard/ai-insights', methods=['GET'])
+def get_country_dashboard_ai_insights():
+    """Generate AI insights for country dashboard by fetching data directly from backend"""
+    try:
+        # Get parameters from query string
+        date_range = request.args.get('date_range', 90, type=int)
+        partner_country = request.args.get('partner_country', 'All')
+        report_type = request.args.get('report_type', 'monthly')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        logger.info(f"Generating AI insights for country dashboard - range: {date_range} days, country: {partner_country}, type: {report_type}")
+        
+        # Fetch all necessary data directly from backend functions
+        overview_data = get_country_performance_overview(date_range)
+        
+        # Prepare dashboard data by calling backend functions directly
+        dashboard_data = {
+            'date_range': date_range,
+            'partner_country': partner_country,
+            'report_type': report_type,
+            'start_date': start_date,
+            'end_date': end_date,
+            'overview': overview_data,
+            'funnel': get_partner_funnel_data(date_range, partner_country),
+            'top_partners': get_top_partners_data(date_range, partner_country, limit=20),
+            'inactive_partners': get_inactive_partners_data(date_range, partner_country, limit=50),
+            'performance_contribution': get_country_performance_contribution(date_range, partner_country)
+        }
+        
+        # Generate insights
+        insights_result = generate_country_dashboard_insights(dashboard_data)
+        
+        return jsonify({
+            'success': True,
+            'data': insights_result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating country dashboard AI insights: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 def generate_widget_insight(widget_type, data, title):
     """Generate contextual insights based on widget data using LLM"""
     
@@ -1430,6 +1918,12 @@ if __name__ == '__main__':
     print("  • GET  /spotlight/dashboard - Get complete spotlight dashboard")
     print("  • GET  /spotlight/funnel-metrics - Get conversion funnel metrics")
     print("  • POST /ai-insight - Generate AI insights for widget data")
+    print("  • GET  /country-dashboard/overview - Get country performance overview")
+    print("  • GET  /country-dashboard/growth-trends - Get country growth trends")
+    print("  • GET  /country-dashboard/country-details - Get detailed country metrics")
+    print("  • POST /country-dashboard/compare - Compare multiple countries")
+    print("  • GET  /country-dashboard/countries - Get available countries list")
+    print("  • GET  /country-dashboard/application-chart - Get partner application chart with events")
     print("\n🌐 API will be available at: http://localhost:5001")
     print("📝 Make sure to start the React frontend on http://localhost:3000")
     

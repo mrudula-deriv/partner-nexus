@@ -107,6 +107,15 @@ const AIInsightIcon = () => (
   </svg>
 );
 
+const RefreshIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+    <path d="M21 3v5h-5"/>
+    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+    <path d="M3 21v-5h5"/>
+  </svg>
+);
+
 function App() {
   // All existing state variables remain the same
   const [query, setQuery] = useState('');
@@ -725,6 +734,13 @@ function App() {
               Metrics Test
             </button>
             <button
+              onClick={() => setActiveTab('country-dashboard')}
+              className={`nav-tab ${activeTab === 'country-dashboard' ? 'active' : ''}`}
+            >
+              <DatabaseIcon />
+              Country Dashboard
+            </button>
+            <button
               onClick={() => setActiveTab('agent-test')}
               className={`nav-tab ${activeTab === 'agent-test' || activeTab === 'sql' || activeTab === 'analytics' ? 'active' : ''}`}
             >
@@ -739,6 +755,13 @@ function App() {
         {activeTab === 'spotlight' && (
           <div className="fade-in">
             <SpotlightDashboard />
+          </div>
+        )}
+
+        {/* Country Dashboard Tab Content */}
+        {activeTab === 'country-dashboard' && (
+          <div className="fade-in">
+            <CountryDashboard />
           </div>
         )}
 
@@ -2373,6 +2396,381 @@ function App() {
                     )}
                   </div>
                 )}
+
+                {/* Screener Content Display */}
+                {/* Screener 1: Performance Overview */}
+                {activeScreener === 1 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    {liveScreenerError && (
+                      <div style={{
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                        backgroundColor: 'var(--primary-red-light)',
+                        color: 'var(--primary-red)',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.875rem'
+                      }}>
+                        {liveScreenerError}
+                      </div>
+                    )}
+
+                    {/* Table 1: Overall Performance Summary */}
+                    {screener1Data?.table1 && screener1Data.table1.length > 0 && (
+                      <div className="card" style={{ marginBottom: '1.5rem' }}>
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Performance Summary</h3>
+                          <button
+                            onClick={() => exportToCSV(screener1Data.table1, 'performance_summary.csv')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="grid-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener1Data.table1[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener1Data.table1).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Table 2: Detailed Breakdown */}
+                    {screener1Data?.table2 && screener1Data.table2.length > 0 && (
+                      <div className="card">
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Detailed Performance Breakdown</h3>
+                          <button
+                            onClick={() => exportToCSV(screener1Data.table2, 'performance_breakdown.csv')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="grid-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener1Data.table2[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener1Data.table2).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No data state */}
+                    {(!screener1Data?.table1 || screener1Data.table1.length === 0) && (!screener1Data?.table2 || screener1Data.table2.length === 0) && !liveScreenerLoading && (
+                      <div className="empty-state">
+                        <div className="empty-state-icon">
+                          <ChartIcon />
+                        </div>
+                        <h4 className="empty-state-title">No performance data available</h4>
+                        <p className="empty-state-text">
+                          Try adjusting your filters or check back later.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Screener 2: Trend Analysis */}
+                {activeScreener === 2 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    {liveScreenerError && (
+                      <div style={{
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                        backgroundColor: 'var(--primary-red-light)',
+                        color: 'var(--primary-red)',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.875rem'
+                      }}>
+                        {liveScreenerError}
+                      </div>
+                    )}
+
+                    {screener2Data && screener2Data.length > 0 ? (
+                      <div className="card">
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Trend Analysis</h3>
+                          <button
+                            onClick={() => exportToCSV(screener2Data, 'trend_analysis.csv', 'trend')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="trend-analysis-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener2Data[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener2Data).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : !liveScreenerLoading ? (
+                      <div className="empty-state">
+                        <div className="empty-state-icon">
+                          <ChartIcon />
+                        </div>
+                        <h4 className="empty-state-title">No trend data available</h4>
+                        <p className="empty-state-text">
+                          Try adjusting your date range or filters.
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                {/* Screener 3: Individual Partner */}
+                {activeScreener === 3 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    {liveScreenerError && (
+                      <div style={{
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                        backgroundColor: 'var(--primary-red-light)',
+                        color: 'var(--primary-red)',
+                        borderRadius: 'var(--radius-md)',
+                        fontSize: '0.875rem'
+                      }}>
+                        {liveScreenerError}
+                      </div>
+                    )}
+
+                    {/* Table 1: Individual Partner Overview */}
+                    {screener3Data?.table1 && screener3Data.table1.length > 0 && (
+                      <div className="card" style={{ marginBottom: '1.5rem' }}>
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Partner Overview</h3>
+                          <button
+                            onClick={() => exportToCSV(screener3Data.table1, 'partner_overview.csv')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="grid-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener3Data.table1[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener3Data.table1).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Table 2: Partner Details */}
+                    {screener3Data?.table2 && screener3Data.table2.length > 0 && (
+                      <div className="card">
+                        <div className="card-header" style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}>
+                          <h3 className="heading-md">Partner Details</h3>
+                          <button
+                            onClick={() => exportToCSV(screener3Data.table2, 'partner_details.csv')}
+                            className="btn btn-sm btn-primary"
+                          >
+                            <DownloadIcon />
+                            Export CSV
+                          </button>
+                        </div>
+                        <div className="table-container">
+                          <table className="grid-table">
+                            <thead>
+                              <tr>
+                                {Object.keys(screener3Data.table2[0] || {}).map(column => (
+                                  <th
+                                    key={column}
+                                    className="sortable"
+                                    onClick={() => handleSort(column)}
+                                  >
+                                    <div style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem'
+                                    }}>
+                                      {column.replace(/_/g, ' ')}
+                                      {sortConfig.key === column && (
+                                        sortConfig.direction === 'asc' ? <ArrowUpIcon /> : <ArrowDownIcon />
+                                      )}
+                                    </div>
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sortData(screener3Data.table2).map((row, idx) => (
+                                <tr key={idx}>
+                                  {Object.entries(row).map(([key, value], colIdx) => (
+                                    <td key={colIdx}>
+                                      {value}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* No data state */}
+                    {(!screener3Data?.table1 || screener3Data.table1.length === 0) && (!screener3Data?.table2 || screener3Data.table2.length === 0) && !liveScreenerLoading && (
+                      <div className="empty-state">
+                        <div className="empty-state-icon">
+                          <ChartIcon />
+                        </div>
+                        <h4 className="empty-state-title">No partner data available</h4>
+                        <p className="empty-state-text">
+                          Try adjusting your date filters or check back later.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -3245,6 +3643,1186 @@ const CountryAnalysisWidget = ({ title, description, data, columns, loading, for
           </tbody>
         </table>
       )}
+    </div>
+  );
+};
+
+// Country Template Dashboard Component - Connected to Backend
+const CountryDashboard = () => {
+  // Helper function to get current date defaults
+  const getCurrentDateDefaults = () => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1; // JavaScript months are 0-based
+    
+    const todayStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+    const firstOfMonth = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+    const currentMonthStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+    
+    return {
+      startDate: firstOfMonth,
+      endDate: todayStr,
+      startMonth: currentMonthStr,
+      endMonth: currentMonthStr
+    };
+  };
+
+  const defaults = getCurrentDateDefaults();
+  const [startDate, setStartDate] = useState(defaults.startDate);
+  const [endDate, setEndDate] = useState(defaults.endDate);
+  const [startMonth, setStartMonth] = useState(defaults.startMonth);
+  const [endMonth, setEndMonth] = useState(defaults.endMonth);
+  const [partnerCountry, setPartnerCountry] = useState('All');
+  const [reportType, setReportType] = useState('Monthly');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Backend data states
+  const [countryOverview, setCountryOverview] = useState([]);
+  const [availableCountries, setAvailableCountries] = useState([]);
+  const [growthTrends, setGrowthTrends] = useState([]);
+  const [kpiData, setKpiData] = useState(null);
+  const [countryPerformance, setCountryPerformance] = useState([]);
+  const [topPartners, setTopPartners] = useState([]);
+  const [inactivePartners, setInactivePartners] = useState([]);
+  const [newPartnerSupport, setNewPartnerSupport] = useState([]);
+  const [applicationChartData, setApplicationChartData] = useState(null);
+  const [funnelData, setFunnelData] = useState(null);
+  const [activationChartData, setActivationChartData] = useState(null);
+  const [eventsTableData, setEventsTableData] = useState(null);
+  const [performanceContributionData, setPerformanceContributionData] = useState(null);
+  const [activePartnersChartData, setActivePartnersChartData] = useState(null);
+  const [performanceStatsData, setPerformanceStatsData] = useState(null);
+  const [earningPartnersChartData, setEarningPartnersChartData] = useState(null);
+  const [topPartnersData, setTopPartnersData] = useState(null);
+  const [inactivePartnersData, setInactivePartnersData] = useState(null);
+  const [newPartnerSupportData, setNewPartnerSupportData] = useState(null);
+  const [aiInsights, setAiInsights] = useState(null);
+  const [aiInsightsLoading, setAiInsightsLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Helper functions for date conversion
+  const getFirstDayOfMonth = (monthStr) => {
+    return `${monthStr}-01`;
+  };
+
+
+
+  // Get effective start and end dates based on report type
+  const getEffectiveDates = () => {
+    if (reportType === 'Monthly') {
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      
+      return {
+        startDate: getFirstDayOfMonth(startMonth),
+        endDate: todayStr // Always use current date, not last day of month
+      };
+    } else {
+      return { startDate, endDate };
+    }
+  };
+
+  // Handler for report type change
+  const handleReportTypeChange = (newReportType) => {
+    setReportType(newReportType);
+    
+    // Sync dates when switching between modes
+    if (newReportType === 'Monthly') {
+      // Convert current dates to months
+      const startDateObj = new Date(startDate);
+      const endDateObj = new Date(endDate);
+      setStartMonth(startDateObj.getFullYear() + '-' + String(startDateObj.getMonth() + 1).padStart(2, '0'));
+      setEndMonth(endDateObj.getFullYear() + '-' + String(endDateObj.getMonth() + 1).padStart(2, '0'));
+    } else {
+      // Convert current months to dates
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+      setStartDate(getFirstDayOfMonth(startMonth));
+      setEndDate(todayStr); // Use current date, not last day of month
+    }
+  };
+
+  // Only fetch data on initial load
+  useEffect(() => {
+    fetchDashboardData();
+  }, []); // Empty dependency array means only run on mount
+
+  // Fetch AI insights when filters change
+  useEffect(() => {
+    fetchAIInsights();
+  }, [partnerCountry, reportType, startMonth, endMonth, startDate, endDate]);
+
+  const fetchDashboardData = async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    try {
+      // Get effective dates based on report type
+      const { startDate: effectiveStartDate, endDate: effectiveEndDate } = getEffectiveDates();
+      
+      // Calculate date range in days
+      const start = new Date(effectiveStartDate);
+      const end = new Date(effectiveEndDate);
+      const dateRange = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+
+      // Fetch basic country overview data
+      const overviewResponse = await axios.get(`${API_BASE_URL}/country-dashboard/overview?date_range=${dateRange}`);
+      const overviewData = overviewResponse.data.data || {};
+      setCountryOverview(overviewData.country_data || []);
+
+      // Fetch available countries
+      const countriesResponse = await axios.get(`${API_BASE_URL}/country-dashboard/countries`);
+      setAvailableCountries(countriesResponse.data.data || []);
+
+      // Fetch growth trends
+      const trendsResponse = await axios.get(`${API_BASE_URL}/country-dashboard/growth-trends?date_range=${dateRange}`);
+      setGrowthTrends(trendsResponse.data.data || []);
+
+      // Fetch application chart data
+      const chartResponse = await axios.get(`${API_BASE_URL}/country-dashboard/application-chart?date_range=${dateRange}&period_type=${reportType.toLowerCase()}&start_date=${encodeURIComponent(effectiveStartDate)}&end_date=${encodeURIComponent(effectiveEndDate)}&partner_country=${encodeURIComponent(partnerCountry)}`);
+      setApplicationChartData(chartResponse.data.data || null);
+
+      // Fetch partner funnel data
+      const funnelResponse = await axios.get(`${API_BASE_URL}/country-dashboard/partner-funnel?date_range=${dateRange}&partner_country=${encodeURIComponent(partnerCountry)}`);
+      setFunnelData(funnelResponse.data.data || null);
+
+      // Fetch activation chart data
+      const activationResponse = await axios.get(`${API_BASE_URL}/country-dashboard/activation-chart?date_range=${dateRange}&period_type=${reportType.toLowerCase()}&partner_country=${encodeURIComponent(partnerCountry)}`);
+      setActivationChartData(activationResponse.data.data || null);
+
+      // Fetch active partners chart data
+      const activePartnersResponse = await axios.get(`${API_BASE_URL}/country-dashboard/active-partners-chart?date_range=${dateRange}&period_type=${reportType.toLowerCase()}&start_date=${encodeURIComponent(effectiveStartDate)}&end_date=${encodeURIComponent(effectiveEndDate)}&partner_country=${encodeURIComponent(partnerCountry)}`);
+      setActivePartnersChartData(activePartnersResponse.data.data || null);
+
+      // Fetch events data
+      const eventsResponse = await axios.get(`${API_BASE_URL}/country-dashboard/events?date_range=${dateRange}&partner_country=${encodeURIComponent(partnerCountry)}`);
+      setEventsTableData(eventsResponse.data.data || null);
+
+      // Fetch performance contribution data
+      const contributionResponse = await axios.get(`${API_BASE_URL}/country-dashboard/performance-contribution?date_range=${dateRange}&partner_country=${encodeURIComponent(partnerCountry)}`);
+      setPerformanceContributionData(contributionResponse.data.data || null);
+
+      // Fetch performance stats data
+      const performanceStatsResponse = await axios.get(`${API_BASE_URL}/country-dashboard/performance-stats?date_range=${dateRange}&period_type=${reportType.toLowerCase()}&start_date=${encodeURIComponent(effectiveStartDate)}&end_date=${encodeURIComponent(effectiveEndDate)}&partner_country=${encodeURIComponent(partnerCountry)}`);
+      setPerformanceStatsData(performanceStatsResponse.data.data || null);
+
+      // Fetch earning partners chart data
+      const earningPartnersResponse = await axios.get(`${API_BASE_URL}/country-dashboard/earning-partners-chart?date_range=${dateRange}&period_type=${reportType.toLowerCase()}&start_date=${encodeURIComponent(effectiveStartDate)}&end_date=${encodeURIComponent(effectiveEndDate)}&partner_country=${encodeURIComponent(partnerCountry)}`);
+      setEarningPartnersChartData(earningPartnersResponse.data.data || null);
+
+      // Fetch top partners data
+      const topPartnersResponse = await axios.get(`${API_BASE_URL}/country-dashboard/top-partners?date_range=${dateRange}&partner_country=${encodeURIComponent(partnerCountry)}&limit=20`);
+      setTopPartnersData(topPartnersResponse.data.data || null);
+
+      // Fetch inactive partners data
+      const inactivePartnersResponse = await axios.get(`${API_BASE_URL}/country-dashboard/inactive-partners?date_range=${dateRange}&partner_country=${encodeURIComponent(partnerCountry)}&limit=50`);
+      setInactivePartnersData(inactivePartnersResponse.data.data || null);
+
+      // Fetch new partner support data
+      const newPartnerResponse = await axios.get(`${API_BASE_URL}/country-dashboard/new-partner-support?date_range=${dateRange}&partner_country=${encodeURIComponent(partnerCountry)}&limit=100`);
+      setNewPartnerSupportData(newPartnerResponse.data.data || null);
+
+      // Calculate basic KPIs from available data
+      calculateKPIs(overviewData.country_data || [], overviewData.financial_totals || {});
+
+      // Set country performance data from backend
+      if (contributionResponse.data.data && contributionResponse.data.data.performance_data) {
+        setCountryPerformance(contributionResponse.data.data.performance_data);
+      } else {
+        setCountryPerformance([]);
+      }
+
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load dashboard data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // Manual refresh function
+  const handleRefresh = () => {
+    fetchDashboardData(true);
+    // Also refresh AI insights
+    fetchAIInsights();
+  };
+
+  // Fetch AI insights based on current dashboard data
+  const fetchAIInsights = async () => {
+    setAiInsightsLoading(true);
+    try {
+      // Get effective dates based on report type
+      const { startDate: effectiveStartDate, endDate: effectiveEndDate } = getEffectiveDates();
+      
+      // Calculate date range in days
+      const start = new Date(effectiveStartDate);
+      const end = new Date(effectiveEndDate);
+      const calculatedDateRange = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+
+      // Simple GET request with parameters - backend will fetch its own data
+      const params = new URLSearchParams({
+        date_range: calculatedDateRange,
+        partner_country: partnerCountry,
+        report_type: reportType,
+        start_date: effectiveStartDate,
+        end_date: effectiveEndDate
+      });
+
+      const response = await axios.get(`${API_BASE_URL}/country-dashboard/ai-insights?${params}`);
+      
+      if (response.data.success && response.data.data.insights) {
+        setAiInsights(response.data.data.insights);
+      }
+    } catch (err) {
+      console.error('Error fetching AI insights:', err);
+      setAiInsights(null);
+    } finally {
+      setAiInsightsLoading(false);
+    }
+  };
+
+  const calculateKPIs = (overviewData, financialTotals) => {
+    if (!overviewData || overviewData.length === 0) {
+      setKpiData({
+        partnerRetentionRate: '0%',
+        totalActivePartners: '0',
+        totalDeposits: '$0',
+        totalVolumeUSD: '$0',
+        totalCompanyRevenue: '$0',
+        totalExpectedRevenue: '$0',
+        totalEarnings: '$0'
+      });
+      return;
+    }
+
+    // Calculate totals from available data
+    const totalPartners = overviewData.reduce((sum, country) => sum + (country.total_partners || 0), 0);
+    const totalActivated = overviewData.reduce((sum, country) => sum + (country.activated_partners || 0), 0);
+    
+    // Use the partner retention rate from backend calculation
+    const partnerRetentionRate = financialTotals.partner_retention_rate || 0;
+
+    // Format financial numbers with M/B/T suffixes
+    const formatCurrency = (amount) => {
+      if (!amount || amount === 0) return '$0';
+      
+      const num = Number(amount);
+      const abs = Math.abs(num);
+      
+      if (abs >= 1e12) {
+        return `$${(num / 1e12).toFixed(1)}T`;
+      } else if (abs >= 1e9) {
+        return `$${(num / 1e9).toFixed(1)}B`;
+      } else if (abs >= 1e6) {
+        return `$${(num / 1e6).toFixed(1)}M`;
+      } else if (abs >= 1e3) {
+        return `$${(num / 1e3).toFixed(1)}K`;
+      } else {
+        return `$${num.toLocaleString()}`;
+      }
+    };
+
+    setKpiData({
+      partnerRetentionRate: `${partnerRetentionRate.toFixed(1)}%`,
+      totalActivePartners: (financialTotals.total_active_partners_period || totalActivated).toLocaleString(),
+      totalDeposits: formatCurrency(financialTotals.total_deposits),
+      totalVolumeUSD: formatCurrency(financialTotals.total_volume_usd),
+      totalCompanyRevenue: formatCurrency(financialTotals.total_company_revenue),
+      totalExpectedRevenue: formatCurrency(financialTotals.total_expected_revenue),
+      totalEarnings: formatCurrency(financialTotals.total_earnings)
+    });
+  };
+
+
+
+  const formatNumber = (num) => {
+    if (num === null || num === undefined || num === '') return '-';
+    const numValue = typeof num === 'string' ? parseFloat(num) : num;
+    if (isNaN(numValue)) return '-';
+    return numValue.toLocaleString();
+  };
+
+  // Format large currency amounts with M/B/T suffixes
+  const formatCurrencyLarge = (amount) => {
+    if (!amount || amount === 0) return '$0';
+    
+    const num = Number(amount);
+    const abs = Math.abs(num);
+    
+    if (abs >= 1e12) {
+      return `$${(num / 1e12).toFixed(1)}T`;
+    } else if (abs >= 1e9) {
+      return `$${(num / 1e9).toFixed(1)}B`;
+    } else if (abs >= 1e6) {
+      return `$${(num / 1e6).toFixed(1)}M`;
+    } else if (abs >= 1e3) {
+      return `$${(num / 1e3).toFixed(1)}K`;
+    } else {
+      return `$${num.toLocaleString()}`;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <p>Loading country dashboard...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="error-container">
+        <div className="error-message">{error}</div>
+        <button onClick={() => { setError(null); handleRefresh(); }} className="retry-button">
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="country-template-dashboard">
+      {/* Header */}
+      <div className="template-header">
+        <h1>Country Dashboard</h1>
+      </div>
+
+      {/* Filters Section */}
+      <div className="filters-section">
+        <h3>Filters:</h3>
+        <div className="filters-row">
+          {reportType === 'Monthly' ? (
+            <>
+              <div className="filter-group">
+                <label>Start Month</label>
+                <input 
+                  type="month" 
+                  value={startMonth} 
+                  onChange={(e) => setStartMonth(e.target.value)} 
+                />
+                
+              </div>
+              <div className="filter-group">
+                <label>End Month</label>
+                <input 
+                  type="month" 
+                  value={endMonth} 
+                  onChange={(e) => setEndMonth(e.target.value)} 
+                />
+                
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="filter-group">
+                <label>Start Date</label>
+                <input 
+                  type="date" 
+                  value={startDate} 
+                  onChange={(e) => setStartDate(e.target.value)} 
+                />
+              </div>
+              <div className="filter-group">
+                <label>End Date</label>
+                <input 
+                  type="date" 
+                  value={endDate} 
+                  onChange={(e) => setEndDate(e.target.value)} 
+                />
+              </div>
+            </>
+          )}
+                     <div className="filter-group">
+             <label>Partner Country</label>
+             <select value={partnerCountry} onChange={(e) => setPartnerCountry(e.target.value)}>
+               <option value="All">All Countries</option>
+               {availableCountries.map((country, index) => (
+                 <option key={index} value={country.country}>
+                   {country.country} ({formatNumber(country.partner_count)} partners)
+                 </option>
+               ))}
+             </select>
+           </div>
+          <div className="filter-group">
+            <label>Daily / Monthly</label>
+            <select value={reportType} onChange={(e) => handleReportTypeChange(e.target.value)}>
+              <option value="Daily">Daily</option>
+              <option value="Monthly">Monthly</option>
+            </select>
+          </div>
+          
+          {/* Refresh Button */}
+          <div className="filter-group">
+            <label>&nbsp;</label> {/* Empty label for alignment */}
+            <button 
+              className="refresh-button" 
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              {refreshing ? (
+                <>
+                  <span className="refresh-spinner">
+                    <RefreshIcon />
+                  </span>
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <RefreshIcon />
+                  Refresh Data
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+        <div className="template-note">
+          
+        </div>
+      </div>
+
+             {/* Main KPIs Scorecards */}
+       <div className="main-kpis-section">
+         <h3>Main KPIs (scorecards)</h3>
+         <div className="kpis-grid">
+           <div className="kpi-card">
+             <div className="kpi-label">Partner Retention Rate</div>
+             <div className="kpi-value">{kpiData?.partnerRetentionRate || '0%'}</div>
+           </div>
+           <div className="kpi-card">
+             <div className="kpi-label">Total Active Partners</div>
+             <div className="kpi-value">{kpiData?.totalActivePartners || '0'}</div>
+           </div>
+           <div className="kpi-card">
+             <div className="kpi-label">Total Deposits</div>
+             <div className="kpi-value">{kpiData?.totalDeposits || 'N/A'}</div>
+           </div>
+           <div className="kpi-card">
+             <div className="kpi-label">Total Volume USD</div>
+             <div className="kpi-value">{kpiData?.totalVolumeUSD || 'N/A'}</div>
+           </div>
+           <div className="kpi-card">
+             <div className="kpi-label">Total Company Revenue</div>
+             <div className="kpi-value">{kpiData?.totalCompanyRevenue || 'N/A'}</div>
+           </div>
+           <div className="kpi-card">
+             <div className="kpi-label">Total Expected Revenue</div>
+             <div className="kpi-value">{kpiData?.totalExpectedRevenue || 'N/A'}</div>
+           </div>
+           <div className="kpi-card">
+             <div className="kpi-label">Total Earnings</div>
+             <div className="kpi-value">{kpiData?.totalEarnings || 'N/A'}</div>
+           </div>
+         </div>
+
+      </div>
+
+      {/* Country Performance Section */}
+      <div className="country-performance-section">
+        <h3>Country Performance Contribution to current Regions / Overall</h3>
+        <div className="performance-table-container">
+          <table className="performance-table">
+            <thead>
+              <tr>
+                <th></th>
+                <th>New Application</th>
+                <th>New Activation %</th>
+                <th>Active Partner %</th>
+                <th>Earnings %</th>
+                <th>Deposit %</th>
+                <th>Volume USD %</th>
+                <th>Company Revenue %</th>
+              </tr>
+            </thead>
+                         <tbody>
+               {countryPerformance.map((row, index) => (
+                 <tr key={index} className={row.region === 'Overall' ? 'overall-row' : ''}>
+                   <td className="region-cell">{row.region}</td>
+                   <td>{formatNumber(row.new_application)}</td>
+                   <td>{row.new_activation_pct}%</td>
+                   <td>{row.active_partner_pct}%</td>
+                   <td>{row.earnings_pct}%</td>
+                   <td>{row.deposit_pct}%</td>
+                   <td>{row.volume_usd_pct}%</td>
+                   <td>{row.company_revenue_pct}%</td>
+                 </tr>
+               ))}
+               {countryPerformance.length === 0 && (
+                 <tr>
+                   <td colSpan="8" style={{textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)'}}>
+                     No data available. Please check your filters or try a different date range.
+                   </td>
+                 </tr>
+               )}
+             </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      {/* Charts and Tables - Vertical Stack */}
+      <div className="charts-vertical-stack">
+        {/* Top Row: Application Chart and Events Table Side-by-Side */}
+        <div className="chart-row-flex">
+          {/* Application Plot */}
+          <div className="chart-section chart-half-width">
+          <h4>Applications Attributed to Events ({reportType})</h4>
+          <div className="chart-note" style={{fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '0.5rem'}}>
+            Shows applications from event countries during event periods within the selected date range
+            {reportType === 'Daily' && <span style={{fontStyle: 'italic'}}> (Daily: Only shows dates with events • Scroll horizontally for more dates)</span>}
+          </div>
+          <div className="chart-placeholder">
+            {applicationChartData ? (
+              <div className={`application-chart ${reportType === 'Daily' ? 'daily-chart' : ''}`}>
+                {/* Chart Bars */}
+                <div className={`chart-bars ${reportType === 'Daily' ? 'daily-view' : ''}`}>
+                  {applicationChartData.applications.map((item, index) => {
+                    const maxCount = Math.max(...applicationChartData.applications.map(a => a.application_count));
+                    const height = maxCount > 0 ? (item.application_count / maxCount) * 100 : 0;
+                    return (
+                      <div key={index} className={`bar-container ${reportType === 'Daily' ? 'daily-view' : ''}`}>
+                        <div 
+                          className="bar" 
+                          style={{
+                            height: `${Math.max(height, 5)}px`,
+                            backgroundColor: index < applicationChartData.applications.length - 1 ? '#ff6b6b' : '#4a4a4a'
+                          }}
+                          title={`${item.period_label}: ${item.application_count} applications`}
+                        ></div>
+                        <span className="bar-label">{item.period_label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Events Overlay */}
+                {applicationChartData.events && applicationChartData.events.length > 0 && (
+                  <div className="events-overlay">
+                    <h5>Events in Period:</h5>
+                    <div className="events-list">
+                      {applicationChartData.events.slice(0, 10).map((event, index) => (
+                        <div key={index} className="event-item">
+                          <span className="event-date">{event.event_month}</span>
+                          <span className="event-type">{event.event_type || 'Event'}</span>
+                          <span className="event-regions">{event.regions_list || 'N/A'}</span>
+                        </div>
+                      ))}
+                      {applicationChartData.events.length > 10 && (
+                        <div className="event-item">+ {applicationChartData.events.length - 10} more events</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Summary Stats */}
+                {applicationChartData.summary && (
+                  <div className="chart-summary">
+                    <div className="summary-item">
+                      <span className="summary-label">Event-Attributed Applications:</span>
+                      <span className="summary-value">{applicationChartData.summary.total_applications}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Recent (30d):</span>
+                      <span className="summary-value">{applicationChartData.summary.recent_30_days}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Event Countries:</span>
+                      <span className="summary-value">{applicationChartData.summary.unique_countries}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="loading-chart">
+                <div>Loading chart data...</div>
+              </div>
+            )}
+          </div>
+
+        </div>
+
+          {/* Events Table */}
+          <div className="chart-section chart-half-width">
+          <h4>Past & Upcoming Events</h4>
+          <div className="events-table-container">
+            {eventsTableData ? (
+              <div>
+                {/* Past Events */}
+                <div className="events-table-wrapper">
+                  <table className="events-table">
+                    <thead>
+                      <tr>
+                        <th>Event</th>
+                        <th>Event Date</th>
+                        <th>Event Type</th>
+                        <th>Spent</th>
+                        <th>Co Revenues</th>
+                      </tr>
+                    </thead>
+                  </table>
+                  <div className="events-table-scroll">
+                    <table className="events-table">
+                      <tbody>
+                        {eventsTableData.past_events && eventsTableData.past_events.length > 0 ? eventsTableData.past_events.map((event, index) => (
+                          <tr key={index}>
+                            <td>{event.event_name}</td>
+                            <td>{event.event_date}</td>
+                            <td>{event.event_type || 'N/A'}</td>
+                            <td>{event.spent}</td>
+                            <td>{event.co_revenues}</td>
+                          </tr>
+                        )) : (
+                          <tr>
+                            <td colSpan="5" style={{textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)'}}>
+                              No past events found for the selected period
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                
+                {/* Upcoming Events Section */}
+                <div className="section-divider">
+                  <strong>Upcoming</strong>
+                </div>
+                
+                {eventsTableData.upcoming_events && eventsTableData.upcoming_events.length > 0 ? (
+                  <table className="events-table">
+                    <tbody>
+                      {eventsTableData.upcoming_events.map((event, index) => (
+                        <tr key={index}>
+                          <td>{event.event_name}</td>
+                          <td>{event.event_date}</td>
+                          <td>{event.event_type || 'N/A'}</td>
+                          <td>{event.spent}</td>
+                          <td>{event.co_revenues}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="upcoming-placeholder">
+                    <p>No upcoming events scheduled</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="loading-chart">
+                <div>Loading events data...</div>
+              </div>
+            )}
+          </div>
+
+        </div>
+        </div> {/* Close chart-row-flex */}
+
+        {/* Second Row: Activation Chart and Partner Funnel Side-by-Side */}
+        <div className="chart-row-flex">
+          {/* Activation Chart */}
+          <div className="chart-section chart-half-width">
+          <h4>Number of New Activation ({reportType})</h4>
+          <div className="chart-placeholder">
+            {activationChartData ? (
+              <div className={`activation-chart ${reportType === 'Daily' ? 'daily-chart' : ''}`}>
+                {/* Chart Bars */}
+                <div className={`chart-bars ${reportType === 'Daily' ? 'daily-view' : ''}`}>
+                  {activationChartData.activations.map((item, index) => {
+                    const maxCount = Math.max(...activationChartData.activations.map(a => a.activation_count));
+                    const height = maxCount > 0 ? (item.activation_count / maxCount) * 100 : 0;
+                    return (
+                      <div key={index} className={`bar-container ${reportType === 'Daily' ? 'daily-view' : ''}`}>
+                        <div 
+                          className="bar" 
+                          style={{
+                            height: `${Math.max(height, 5)}px`,
+                            backgroundColor: index < activationChartData.activations.length - 1 ? '#ff6b6b' : '#4a4a4a'
+                          }}
+                          title={`${item.period_label}: ${item.activation_count} activations`}
+                        ></div>
+                        <span className="bar-label">{item.period_label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Summary Stats */}
+                {activationChartData.summary && (
+                  <div className="chart-summary">
+                    <div className="summary-item">
+                      <span className="summary-label">Total Activations:</span>
+                      <span className="summary-value">{activationChartData.summary.total_activations}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Recent (30d):</span>
+                      <span className="summary-value">{activationChartData.summary.recent_30_days}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Countries:</span>
+                      <span className="summary-value">{activationChartData.summary.unique_countries}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="loading-chart">
+                <div>Loading activation data...</div>
+              </div>
+            )}
+          </div>
+
+        </div>
+
+          {/* Partner Funnel */}
+          <div className="chart-section chart-half-width">
+          <h4>Partner Funnel</h4>
+          {funnelData ? (
+            <div>
+              {/* Main Funnel Visual */}
+              <div className="funnel-container">
+                <div className="funnel-stages-list">
+                  {/* New Partners Signups */}
+                  <div className="funnel-stage-row">
+                    <div className="stage-label-left">
+                      <span className="stage-name-label">New Partners Signups</span>
+                    </div>
+                    <div className="funnel-bar-container">
+                      <div 
+                        className="funnel-bar"
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#4a90e2',
+                          clipPath: 'polygon(0 0, 100% 0, 98% 100%, 2% 100%)',
+                        }}
+                      >
+                        <div className="funnel-bar-text">
+                          <span className="percentage-text">100%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="stage-value-right">
+                      <span className="stage-count">{formatNumber(funnelData.total_applications)}</span>
+                    </div>
+                  </div>
+                  
+                  {/* New Partners Approved */}
+                  <div className="funnel-stage-row">
+                    <div className="stage-label-left">
+                      <span className="stage-name-label">New Partners Approved</span>
+                    </div>
+                    <div className="funnel-bar-container">
+                      <div 
+                        className="funnel-bar"
+                        style={{
+                          width: `${Math.max(funnelData.approval_rate, 5)}%`,
+                          backgroundColor: '#7bb3f5',
+                          clipPath: 'polygon(4% 0, 96% 0, 94% 100%, 6% 100%)',
+                        }}
+                      >
+                        <div className="funnel-bar-text">
+                          <span className="percentage-text">{funnelData.approval_rate}%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="stage-value-right">
+                      <span className="stage-count">{formatNumber(funnelData.signup_activations)}</span>
+                    </div>
+                  </div>
+                  
+                  {/* New Partners Active */}
+                  <div className="funnel-stage-row">
+                    <div className="stage-label-left">
+                      <span className="stage-name-label">New Partners Active</span>
+                    </div>
+                    <div className="funnel-bar-container">
+                      <div 
+                        className="funnel-bar"
+                        style={{
+                          width: `${Math.max(funnelData.activation_rate, 5)}%`,
+                          backgroundColor: '#ff69b4',
+                          clipPath: 'polygon(10% 0, 90% 0, 80% 100%, 20% 100%)',
+                        }}
+                      >
+                        <div className="funnel-bar-text">
+                          <span className="percentage-text">{funnelData.activation_rate}%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="stage-value-right">
+                      <span className="stage-count">{formatNumber(funnelData.earning_activations)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="loading-chart">
+              <div>Loading funnel data...</div>
+            </div>
+          )}
+
+        </div>
+        </div> {/* Close chart-row-flex */}
+
+        {/* Third Row: Active Partners Chart and Performance Stats Side-by-Side */}
+        <div className="chart-row-flex">
+          {/* Active Partners Chart */}
+          <div className="chart-section chart-half-width">
+          <h4>Number of Active Partners ({reportType})</h4>
+          <div className="chart-note" style={{fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '0.5rem'}}>
+            Partners with new client signup, client traded, or client deposited
+          </div>
+          <div className="chart-placeholder">
+            {activePartnersChartData ? (
+              <div className={`active-partners-chart ${reportType === 'Daily' ? 'daily-chart' : ''}`}>
+                {/* Chart Bars */}
+                <div className={`chart-bars ${reportType === 'Daily' ? 'daily-view' : ''}`}>
+                  {activePartnersChartData.active_partners.map((item, index) => {
+                    const maxCount = Math.max(...activePartnersChartData.active_partners.map(a => a.active_count));
+                    const height = maxCount > 0 ? (item.active_count / maxCount) * 100 : 0;
+                    return (
+                      <div key={index} className={`bar-container ${reportType === 'Daily' ? 'daily-view' : ''}`}>
+                        <div 
+                          className="bar" 
+                          style={{
+                            height: `${Math.max(height, 5)}px`,
+                            backgroundColor: index < activePartnersChartData.active_partners.length - 1 ? '#ff6b6b' : '#4a4a4a'
+                          }}
+                          title={`${item.period_label}: ${item.active_count} active partners`}
+                        ></div>
+                        <span className="bar-label">{item.period_label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Summary Stats */}
+                {activePartnersChartData.summary && (
+                  <div className="chart-summary">
+                    <div className="summary-item">
+                      <span className="summary-label">Total Active:</span>
+                      <span className="summary-value">{activePartnersChartData.summary.total_active}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Recent (30d):</span>
+                      <span className="summary-value">{activePartnersChartData.summary.recent_30_days}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Countries:</span>
+                      <span className="summary-value">{activePartnersChartData.summary.unique_countries}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="loading-chart">
+                <div>Loading active partners data...</div>
+              </div>
+            )}
+          </div>
+
+        </div>
+
+          {/* Performance Stats Table */}
+          <div className="chart-section chart-half-width">
+          <h4>{reportType} Performance Stats</h4>
+          <div className="performance-stats-container">
+            <table className="performance-stats-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Total Active Partners</th>
+                  <th>Total Deposit</th>
+                  <th>Total Volume USD</th>
+                  <th>Total Company Revenue</th>
+                  <th>Total Expected Revenue</th>
+                  <th>Total Earnings</th>
+                </tr>
+              </thead>
+                             <tbody>
+                 {performanceStatsData && performanceStatsData.performance_stats && performanceStatsData.performance_stats.length > 0 ? performanceStatsData.performance_stats.map((stat, index) => (
+                   <tr key={index}>
+                     <td>{stat.period_label}</td>
+                     <td>{formatNumber(stat.total_active_partners)}</td>
+                     <td>{stat.total_deposit}</td>
+                     <td>{stat.total_volume_usd}</td>
+                     <td>{stat.total_company_revenue}</td>
+                     <td>{stat.total_expected_revenue}</td>
+                     <td>{stat.total_earnings}</td>
+                   </tr>
+                 )) : (
+                   <tr>
+                     <td colSpan="7" style={{textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)'}}>
+                       {performanceStatsData ? 'No performance data available for the selected period' : 'Loading performance stats...'}
+                     </td>
+                   </tr>
+                 )}
+               </tbody>
+            </table>
+          </div>
+
+        </div>
+        </div> {/* Close chart-row-flex */}
+
+        {/* Fourth Row: Earning Partners Chart and Top Partners Table Side-by-Side */}
+        <div className="chart-row-flex">
+          {/* Earning Partners Chart */}
+          <div className="chart-section chart-half-width">
+            <h4>Number of Earning Partners ({reportType}) - partner who generated commission during the month</h4>
+            <div className="chart-placeholder">
+              {earningPartnersChartData ? (
+                <div className={`earning-partners-chart ${reportType === 'Daily' ? 'daily-chart' : ''}`}>
+                  {/* Chart Bars */}
+                  <div className={`chart-bars ${reportType === 'Daily' ? 'daily-view' : ''}`}>
+                    {earningPartnersChartData.earning_partners.map((item, index) => {
+                      const maxCount = Math.max(...earningPartnersChartData.earning_partners.map(e => e.earning_count));
+                      const height = maxCount > 0 ? (item.earning_count / maxCount) * 100 : 0;
+                      return (
+                        <div key={index} className={`bar-container ${reportType === 'Daily' ? 'daily-view' : ''}`}>
+                          <div 
+                            className="bar" 
+                            style={{
+                              height: `${Math.max(height, 5)}px`,
+                              backgroundColor: index < earningPartnersChartData.earning_partners.length - 1 ? '#ff6b6b' : '#4a4a4a'
+                            }}
+                            title={`${item.period_label}: ${item.earning_count} earning partners`}
+                          ></div>
+                          <span className="bar-label">{item.period_label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Summary Stats */}
+                  <div className="chart-summary">
+                    <div className="summary-item">
+                      <span className="summary-label">Total Earning:</span>
+                      <span className="summary-value">{earningPartnersChartData.summary?.total_earning || '0'}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Recent 30 days:</span>
+                      <span className="summary-value">{earningPartnersChartData.summary?.recent_30_days || '0'}</span>
+                    </div>
+                    <div className="summary-item">
+                      <span className="summary-label">Total Earnings:</span>
+                      <span className="summary-value">${formatNumber(earningPartnersChartData.summary?.total_earnings_sum || 0)}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="loading-placeholder">
+                  Loading earning partners data...
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* Top Partners Table */}
+          <div className="chart-section chart-half-width">
+            <h4>Top 20 Partners</h4>
+            <div className="top-partners-container scrollable-table">
+              <table className="top-partners-table">
+            <thead>
+              <tr>
+                <th>Partner ID</th>
+                <th>Total new client signups</th>
+                <th>Total new sub-aff signups</th>
+                <th>Total Active Clients</th>
+                <th>Total Deposit</th>
+                <th>Total Volume USD</th>
+                <th>Total Company Revenue</th>
+                <th>Total Expected Revenue</th>
+                <th>Total Direct Earnings</th>
+                <th>Total sub-affiliate Earnings</th>
+              </tr>
+            </thead>
+                         <tbody>
+               {topPartnersData && topPartnersData.top_partners && topPartnersData.top_partners.length > 0 ? topPartnersData.top_partners.map((partner, index) => (
+                 <tr key={index}>
+                   <td>{partner.partner_id}</td>
+                   <td>{formatNumber(partner.total_new_client_signups)}</td>
+                   <td>{formatNumber(partner.total_new_sub_aff_signups)}</td>
+                   <td>{formatNumber(partner.total_active_clients)}</td>
+                   <td>{formatCurrencyLarge(partner.total_deposit)}</td>
+                   <td>{formatCurrencyLarge(partner.total_volume_usd)}</td>
+                   <td>{formatCurrencyLarge(partner.total_company_revenue)}</td>
+                   <td>{formatCurrencyLarge(partner.total_expected_revenue)}</td>
+                   <td>{formatCurrencyLarge(partner.total_direct_earnings)}</td>
+                   <td>{formatCurrencyLarge(partner.total_sub_affiliate_earnings)}</td>
+                 </tr>
+               )) : (
+                 <tr>
+                   <td colSpan="10" style={{textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)'}}>
+                     {topPartnersData === null ? 'Loading top partners data...' : 'No top partners data available for the selected period'}
+                   </td>
+                 </tr>
+               )}
+             </tbody>
+          </table>
+        </div>
+
+          </div>
+        </div> {/* Close chart-row-flex */}
+      </div>
+
+      {/* Bottom Tables Grid */}
+      <div className="bottom-tables-grid">
+        {/* Partner Inactivity */}
+        <div className="table-section">
+          <h4>Partner Inactivity by tiers</h4>
+          {inactivePartnersData && inactivePartnersData.summary && (
+            <div className="tier-summary">
+              <span className="tier-item bronze">Bronze (≤$500): {inactivePartnersData.summary.bronze_count || 0}</span>
+              <span className="tier-item silver">Silver ($500-$1K): {inactivePartnersData.summary.silver_count || 0}</span>
+              <span className="tier-item gold">Gold ($1K-$5K): {inactivePartnersData.summary.gold_count || 0}</span>
+              <span className="tier-item platinum">Platinum (&gt;$5K): {inactivePartnersData.summary.platinum_count || 0}</span>
+            </div>
+          )}
+          <div className="inactive-partners-container scrollable-table">
+            <table className="inactive-partners-table">
+              <thead>
+                <tr>
+                  <th>Partner ID</th>
+                  <th>Tier</th>
+                  <th>Avg Monthly Commission</th>
+                  <th>Last active date</th>
+                  <th>Last earning date</th>
+                  <th>Last new client signup date</th>
+                  <th>Last new sub-aff signup date</th>
+                </tr>
+              </thead>
+                             <tbody>
+                 {inactivePartnersData && inactivePartnersData.inactive_partners && inactivePartnersData.inactive_partners.length > 0 ? inactivePartnersData.inactive_partners.map((partner, index) => (
+                   <tr key={index}>
+                     <td>{partner.partner_id}</td>
+                     <td>
+                       <span className={`tier-badge ${partner.commission_tier.toLowerCase()}`}>
+                         {partner.commission_tier}
+                       </span>
+                     </td>
+                     <td>{formatCurrencyLarge(partner.avg_monthly_commission)}</td>
+                     <td>{partner.last_active_date || 'Never'}</td>
+                     <td>{partner.last_earning_date || 'Never'}</td>
+                     <td>{partner.last_new_client_signup_date || 'Never'}</td>
+                     <td>{partner.last_new_sub_aff_signup_date || 'Never'}</td>
+                   </tr>
+                 )) : (
+                   <tr>
+                     <td colSpan="7" style={{textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)'}}>
+                       {inactivePartnersData === null ? 'Loading inactive partners data...' : 'No inactive partners found for the selected period'}
+                     </td>
+                   </tr>
+                 )}
+               </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* New Partner Support */}
+        <div className="table-section">
+          <h4>New Partner Support</h4>
+          <div className="support-note">
+            <p>- Identify New Partners Not yet Activated or not moved to next funnel</p>
+            <p>- Identify potential earn-new Partners</p>
+          </div>
+          {newPartnerSupportData && newPartnerSupportData.summary && (
+            <div className="partner-support-summary">
+              <span className="summary-stat">Total New: {newPartnerSupportData.summary.total_new_partners || 0}</span>
+              <span className="summary-stat">Not Earning: {newPartnerSupportData.summary.not_yet_earning || 0}</span>
+              <span className="summary-stat">Has Activity: {newPartnerSupportData.summary.has_activity_no_earnings || 0}</span>
+              <span className="summary-stat">Stuck &gt;30d: {newPartnerSupportData.summary.stuck_over_30_days || 0}</span>
+            </div>
+          )}
+          <div className="new-partner-container scrollable-table">
+            <table className="new-partner-table">
+              <thead>
+                <tr>
+                  <th>Partner ID</th>
+                  <th>Join Date</th>
+                  <th>Status</th>
+                  <th>Client Signups</th>
+                  <th>Sub-aff Signups</th>
+                  <th>Deposited Clients</th>
+                  <th>Traded Clients</th>
+                </tr>
+              </thead>
+                             <tbody>
+                 {newPartnerSupportData && newPartnerSupportData.new_partners && newPartnerSupportData.new_partners.length > 0 ? newPartnerSupportData.new_partners.map((partner, index) => (
+                   <tr key={index} className={partner.high_potential ? 'high-potential' : ''}>
+                     <td>{partner.partner_id}</td>
+                     <td>{partner.partner_join_date}</td>
+                     <td>
+                       <span className={`status-badge ${partner.partner_status.toLowerCase().replace(/\s+/g, '-')}`}>
+                         {partner.partner_status}
+                       </span>
+                     </td>
+                     <td>{formatNumber(partner.number_of_client_signups)}</td>
+                     <td>{formatNumber(partner.number_of_subaff_signups)}</td>
+                     <td>{formatNumber(partner.number_of_deposited_client)}</td>
+                     <td>{formatNumber(partner.number_of_traded_client)}</td>
+                   </tr>
+                 )) : (
+                   <tr>
+                     <td colSpan="7" style={{textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)'}}>
+                       {newPartnerSupportData === null ? 'Loading new partner support data...' : 'No new partners found needing support'}
+                     </td>
+                   </tr>
+                 )}
+               </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* AI Insights Section - Placed at the bottom */}
+      <div className="ai-insights-section">
+        <h3>AI-Generated Insights</h3>
+        {aiInsightsLoading ? (
+          <div className="insights-loading">
+            <div className="spinner"></div>
+            <span>Analyzing dashboard data...</span>
+          </div>
+        ) : aiInsights ? (
+          <div className="insights-grid">
+            <div className="insight-category highlights">
+              <h4>✅ Highlights</h4>
+              <ul>
+                {aiInsights.highlights?.map((highlight, index) => (
+                  <li key={index}>{highlight}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="insight-category concerns">
+              <h4>⚠️ Concerns</h4>
+              <ul>
+                {aiInsights.concerns?.map((concern, index) => (
+                  <li key={index}>{concern}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="insight-category recommendations">
+              <h4>💡 Recommendations</h4>
+              <ul>
+                {aiInsights.recommendations?.map((recommendation, index) => (
+                  <li key={index}>{recommendation}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <div className="insights-empty">
+            <p>AI insights will appear here once data is loaded.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
