@@ -9309,7 +9309,7 @@
         "relationships": [
             {
                 "foreign_key_column": "event_code",
-                "references_table": "gp.event",
+                "references_table": "gp.testing_event_duplicate",
                 "references_column": "event_code",
                 "constraint_name": "inferred_fk_gp_event_attendees_event_code"
             },
@@ -9327,6 +9327,103 @@
             }
         ],
         "description": "Event Attendees Details"
+    },
+    "gp.testing_event_duplicate": {
+        "columns": [
+            {
+                "data_type": "text",
+                "column_name": "event_code",
+                "description": null,
+                "is_nullable": "NO",
+                "is_primary_key": true
+            },
+            {
+                "data_type": "text",
+                "column_name": "standard_event_code",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "text",
+                "column_name": "event_type",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "text",
+                "column_name": "event_country",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "text",
+                "column_name": "event_city",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "text",
+                "column_name": "language",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "text",
+                "column_name": "gp_region",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "date",
+                "column_name": "start_date",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "date",
+                "column_name": "end_date",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "text",
+                "column_name": "event_subcategory",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "text",
+                "column_name": "trip_lead",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "real",
+                "column_name": "estimated_budget_usd",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "real",
+                "column_name": "actual_spend_usd",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            }
+        ],
+        "relationships": [],
+        "description": "This is a duplicate of event"
     },
     "partner.commission_daily": {
         "columns": [
@@ -14876,6 +14973,131 @@
                 "constraint_name": "inferred_fk_partner_commission_monthly_2025_12_partner_id"
             }
         ],
+        "description": null
+    },
+    "partner.external_monthly_metrics": {
+        "columns": [
+            {
+                "data_type": "text",
+                "column_name": "partner_id",
+                "description": null,
+                "is_nullable": "NO",
+                "is_primary_key": true
+            },
+            {
+                "data_type": "date",
+                "column_name": "month",
+                "description": null,
+                "is_nullable": "NO",
+                "is_primary_key": true
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "direct_deposits",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "deposit_via_pa_usd",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "deposit_via_p2p_usd",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "total_deposits",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "direct_withdrawal",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "withdrawal_via_pa_usd",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "withdrawal_via_p2p_usd",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "total_withdrawal",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "client_signups",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "first_time_deposited_clients",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "first_time_traded_clients",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "total_active_clients",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "previous_month_total_clients",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "retained_from_previous_month",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            },
+            {
+                "data_type": "numeric",
+                "column_name": "client_retention_rate",
+                "description": null,
+                "is_nullable": "YES",
+                "is_primary_key": false
+            }
+        ],
+        "relationships": [],
         "description": null
     },
     "partner.partner_info": {

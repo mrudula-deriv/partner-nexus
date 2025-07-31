@@ -4099,7 +4099,6 @@ const CountryDashboard = () => {
 
              {/* Main KPIs Scorecards */}
        <div className="main-kpis-section">
-         <h3>Main KPIs (scorecards)</h3>
          <div className="kpis-grid">
            <div className="kpi-card">
              <div className="kpi-label">Partner Retention Rate</div>
