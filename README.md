@@ -65,7 +65,8 @@ In a new terminal, from the project root:
 
 ```bash
 cd frontend
-npm install
+npm install --force
+npm audit fix --force
 npm start
 ```
 

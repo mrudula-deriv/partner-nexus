@@ -1502,13 +1502,8 @@ def get_country_performance_contribution(date_range=90, partner_country=None):
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            # Build country filter
-            country_filter = ""
-            if partner_country and partner_country != 'All':
-                country_filter = "AND COALESCE(partner_country, 'Unknown') = %s"
-            
-            # First, get overall totals for percentage calculations
-            overall_query = f"""
+            # First, get overall totals WITHOUT any country filter for percentage calculations
+            overall_query = """
                 SELECT 
                     COUNT(DISTINCT partner_id) as total_applications,
                     COUNT(DISTINCT CASE WHEN first_earning_date IS NOT NULL THEN partner_id END) as total_activations,
@@ -1519,19 +1514,14 @@ def get_country_performance_contribution(date_range=90, partner_country=None):
                     COUNT(DISTINCT CASE WHEN first_client_trade_date IS NOT NULL THEN partner_id END) as total_volume_partners
                 FROM partner.partner_info
                 WHERE is_internal = FALSE
-                AND date_joined >= CURRENT_DATE - INTERVAL '{date_range} days'
-                {country_filter};
+                AND date_joined >= CURRENT_DATE - INTERVAL '%s days'
             """
             
-            if partner_country and partner_country != 'All':
-                cursor.execute(overall_query, (partner_country,))
-            else:
-                cursor.execute(overall_query)
-            
+            cursor.execute(overall_query % date_range)
             overall_totals = cursor.fetchone()
             
-            # Get regional performance data using actual partner_region from database
-            regional_query = f"""
+            # Get regional performance data with country filter if specified
+            regional_query = """
                 SELECT 
                     COALESCE(partner_region, 'Unknown') as region,
                     COUNT(DISTINCT partner_id) as new_applications,
@@ -1543,26 +1533,37 @@ def get_country_performance_contribution(date_range=90, partner_country=None):
                     COUNT(DISTINCT CASE WHEN first_client_trade_date IS NOT NULL THEN partner_id END) as volume_partners
                 FROM partner.partner_info
                 WHERE is_internal = FALSE
-                AND date_joined >= CURRENT_DATE - INTERVAL '{date_range} days'
-                {country_filter}
+                AND date_joined >= CURRENT_DATE - INTERVAL '%s days'
+                %s
                 GROUP BY partner_region
                 ORDER BY new_applications DESC;
             """
             
+            country_filter = ""
+            params = [date_range]
             if partner_country and partner_country != 'All':
-                cursor.execute(regional_query, (partner_country,))
-            else:
-                cursor.execute(regional_query)
+                country_filter = "AND COALESCE(partner_country, 'Unknown') = %s"
+                params.append(partner_country)
             
+            cursor.execute(regional_query % (date_range, country_filter), tuple(params) if len(params) > 1 else params)
             regional_data = cursor.fetchall()
             
             # Calculate percentages and format data
             performance_data = []
+            filtered_totals = [0] * 6  # Track totals for filtered data
             
             for row in regional_data:
                 region, new_apps, activations, active_partners, earnings, deposits, volume = row
                 
-                # Calculate percentages (avoiding division by zero)
+                # Update filtered totals
+                filtered_totals[0] += new_apps
+                filtered_totals[1] += activations
+                filtered_totals[2] += active_partners
+                filtered_totals[3] += earnings if earnings else 0
+                filtered_totals[4] += deposits
+                filtered_totals[5] += volume
+                
+                # Calculate percentages relative to overall totals
                 new_app_pct = (new_apps / overall_totals[0] * 100) if overall_totals[0] > 0 else 0
                 activation_pct = (activations / overall_totals[1] * 100) if overall_totals[1] > 0 else 0
                 active_partner_pct = (active_partners / overall_totals[2] * 100) if overall_totals[2] > 0 else 0
@@ -1581,50 +1582,35 @@ def get_country_performance_contribution(date_range=90, partner_country=None):
                     'company_revenue_pct': round(earnings_pct, 1)  # Using earnings as proxy for company revenue
                 })
             
-            # Add overall row
+            # Add overall row with filtered totals
             performance_data.append({
                 'region': 'Overall',
-                'new_application': overall_totals[0],
-                'new_activation_pct': 100.0,
-                'active_partner_pct': 100.0,
-                'earnings_pct': 100.0,
-                'deposit_pct': 100.0,
-                'volume_usd_pct': 100.0,
-                'company_revenue_pct': 100.0
+                'new_application': filtered_totals[0],
+                'new_activation_pct': None,
+                'active_partner_pct': None,
+                'earnings_pct': None,
+                'deposit_pct': None,
+                'volume_usd_pct': None,
+                'company_revenue_pct': None
             })
             
             return {
                 'performance_data': performance_data,
                 'overall_totals': {
-                    'total_applications': overall_totals[0],
-                    'total_activations': overall_totals[1],
-                    'total_active_partners': overall_totals[2],
-                    'total_earnings': float(overall_totals[3]) if overall_totals[3] else 0,
-                    'total_deposits': overall_totals[4],
-                    'total_volume_partners': overall_totals[5]
-                },
-                'partner_country': partner_country,
-                'date_range': date_range
+                    'total_applications': filtered_totals[0],
+                    'total_activations': filtered_totals[1],
+                    'total_active_partners': filtered_totals[2],
+                    'total_earnings': filtered_totals[3],
+                    'total_deposits': filtered_totals[4],
+                    'total_volume_partners': filtered_totals[5]
+                }
             }
             
     except Exception as e:
-        logger.error(f"Error in get_country_performance_contribution: {str(e)}")
-        return {
-            'performance_data': [],
-            'overall_totals': {
-                'total_applications': 0,
-                'total_activations': 0,
-                'total_active_partners': 0,
-                'total_earnings': 0,
-                'total_deposits': 0,
-                'total_volume_partners': 0
-            },
-            'partner_country': partner_country,
-            'date_range': date_range,
-            'error': str(e)
-        }
+        print(f"Error in get_country_performance_contribution: {str(e)}")
+        raise e
     finally:
-        conn.close() 
+        conn.close()
 
 def get_active_partners_chart_data(date_range=90, period_type='monthly', start_date=None, end_date=None, partner_country=None):
     """Get active partners chart data over time periods (partners with new client signups, trades, or deposits)"""

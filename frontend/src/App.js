@@ -4154,12 +4154,12 @@ const CountryDashboard = () => {
                  <tr key={index} className={row.region === 'Overall' ? 'overall-row' : ''}>
                    <td className="region-cell">{row.region}</td>
                    <td>{formatNumber(row.new_application)}</td>
-                   <td>{row.new_activation_pct}%</td>
-                   <td>{row.active_partner_pct}%</td>
-                   <td>{row.earnings_pct}%</td>
-                   <td>{row.deposit_pct}%</td>
-                   <td>{row.volume_usd_pct}%</td>
-                   <td>{row.company_revenue_pct}%</td>
+                   <td>{row.region === 'Overall' ? ' ' : `${row.new_activation_pct}%`}</td>
+                   <td>{row.region === 'Overall' ? ' ' : `${row.active_partner_pct}%`}</td>
+                   <td>{row.region === 'Overall' ? ' ' : `${row.earnings_pct}%`}</td>
+                   <td>{row.region === 'Overall' ? ' ' : `${row.deposit_pct}%`}</td>
+                   <td>{row.region === 'Overall' ? ' ' : `${row.volume_usd_pct}%`}</td>
+                   <td>{row.region === 'Overall' ? ' ' : `${row.company_revenue_pct}%`}</td>
                  </tr>
                ))}
                {countryPerformance.length === 0 && (
